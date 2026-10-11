@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  ai-sales-crm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-sales-crm-app
+    restart: always
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=file:/app/prisma/dev.db
+    volumes:
+      # Persistent SQLite volume so data persists across rebuilds & restarts
+      - crm_db_data:/app/prisma
+
+volumes:
+  crm_db_data:
+    driver: local

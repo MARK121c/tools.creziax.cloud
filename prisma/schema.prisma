@@ -1,0 +1,92 @@
+// Prisma schema file for AI Sales Agency & CRM System
+// Zero-cost SQLite database storage
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Lead {
+  id              String         @id @default(cuid())
+  channelId       String         @unique
+  channelName     String
+  channelUrl      String
+  avatarUrl       String?
+  email           String?
+  subscriberCount Int            @default(0)
+  videoCount      Int            @default(0)
+  viewCount       String?
+  description     String?
+  recentVideos    String?        // JSON Array of recent video titles
+  niche           String?
+  status          String         @default("lead_captured") // lead_captured, pitch_ready, email_sent, replied, meeting_booked, closed
+  score           Int            @default(0) // Lead potential score (1-100)
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  pitches         Pitch[]
+  outreachLogs    OutreachLog[]
+  meetingBriefs   MeetingBrief[]
+
+  @@index([status])
+  @@index([niche])
+}
+
+model Pitch {
+  id                   String        @id @default(cuid())
+  leadId               String
+  lead                 Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  subject              String
+  body                 String
+  personalizedStrategy String?
+  status               String        @default("draft") // draft, approved, sent
+  generatedAt          DateTime      @default(now())
+  sentAt               DateTime?
+
+  outreachLogs         OutreachLog[]
+
+  @@index([leadId])
+}
+
+model OutreachLog {
+  id           String    @id @default(cuid())
+  leadId       String
+  lead         Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  pitchId      String?
+  pitch        Pitch?    @relation(fields: [pitchId], references: [id], onDelete: SetNull)
+  status       String    // sent, failed, delivered
+  errorMessage String?
+  sentAt       DateTime  @default(now())
+
+  @@index([leadId])
+}
+
+model MeetingBrief {
+  id               String    @id @default(cuid())
+  leadId           String?
+  lead             Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  meetingDate      DateTime?
+  guestName        String?
+  guestEmail       String?
+  channelNiche     String?
+  briefingText     String
+  recommendedPrice String?
+  strategyNotes    String?
+  sentToTelegram   Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+
+  @@index([leadId])
+}
+
+model Setting {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
