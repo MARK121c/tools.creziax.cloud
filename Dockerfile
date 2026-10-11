@@ -37,16 +37,18 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Create storage dirs
-RUN mkdir -p /app/public /app/prisma && chown -R nextjs:nodejs /app/public /app/prisma
-
-# Copy build artifacts
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules ./node_modules
+# Copy build artifacts with explicit nextjs ownership
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Grant full write access to SQLite database directory and files
+RUN mkdir -p /app/prisma && \
+    chown -R nextjs:nodejs /app && \
+    chmod -R 777 /app/prisma
 
 # Entrypoint script to migrate database on first boot
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./
