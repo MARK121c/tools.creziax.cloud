@@ -1,13 +1,33 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Sparkles, Mail, Plus, Menu, X, ExternalLink } from 'lucide-react';
+import { Sparkles, Mail, Plus, Menu, X, LogOut, UserCheck } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export const Navbar: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) setCurrentUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
 
   const navLinks = [
     { name: 'لوحة المؤشرات', href: '/' },
@@ -15,7 +35,7 @@ export const Navbar: React.FC = () => {
     { name: 'CRM العملاء', href: '/crm' },
     { name: 'عروض AI', href: '/pitches' },
     { name: 'الاجتماعات', href: '/meetings' },
-    { name: 'الإعدادات', href: '/settings' },
+    { name: 'الإعدادات والأمان', href: '/settings' },
   ];
 
   return (
@@ -30,7 +50,7 @@ export const Navbar: React.FC = () => {
 
         <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-700/50">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>النظام نشط وجاهز للعمليات الآلية</span>
+          <span>النظام محمي ومشفر بالكامل</span>
         </div>
       </div>
 
@@ -44,16 +64,29 @@ export const Navbar: React.FC = () => {
         </Link>
         <Link
           href="/crm"
-          className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium border border-slate-700/60 transition-all"
+          className="hidden sm:flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium border border-slate-700/60 transition-all"
         >
           <Mail className="w-4 h-4 text-amber-400" />
           <span>إرسال الحملات</span>
         </Link>
+        <button
+          onClick={handleLogout}
+          title="تسجيل الخروج"
+          className="p-2 rounded-xl bg-slate-800/80 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 border border-slate-700/60 transition-colors"
+        >
+          <LogOut className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Mobile Drawer */}
       {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-x-0 top-16 bg-slate-900 border-b border-slate-800 p-4 space-y-2 z-50">
+        <div className="md:hidden fixed inset-x-0 top-16 bg-slate-900 border-b border-slate-800 p-4 space-y-2 z-50 shadow-2xl">
+          {currentUser && (
+            <div className="p-3 mb-2 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+              <span className="text-slate-300 font-medium">{currentUser.name}</span>
+              <span className="text-slate-400 font-mono" dir="ltr">{currentUser.email}</span>
+            </div>
+          )}
           {navLinks.map((item) => (
             <Link
               key={item.href}
@@ -64,6 +97,13 @@ export const Navbar: React.FC = () => {
               {item.name}
             </Link>
           ))}
+          <button
+            onClick={handleLogout}
+            className="w-full text-right px-4 py-2.5 rounded-lg text-rose-400 hover:bg-rose-500/10 text-sm font-medium flex items-center justify-between"
+          >
+            <span>تسجيل الخروج</span>
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       )}
     </header>

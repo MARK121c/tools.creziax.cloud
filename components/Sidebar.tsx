@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Youtube,
@@ -12,6 +12,8 @@ import {
   Settings,
   Flame,
   Zap,
+  LogOut,
+  UserCheck,
 } from 'lucide-react';
 
 const navigationItems = [
@@ -49,6 +51,27 @@ const navigationItems = [
 
 export const Sidebar: React.FC = () => {
   const pathname = usePathname();
+  const router = useRouter();
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) setCurrentUser(data.user);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+      router.refresh();
+    } catch (err) {
+      console.error('Logout failed:', err);
+    }
+  };
 
   return (
     <aside className="w-64 bg-slate-900/80 backdrop-blur-xl border-l border-slate-800 flex flex-col h-screen sticky top-0 z-40 hidden md:flex">
@@ -94,16 +117,39 @@ export const Sidebar: React.FC = () => {
         })}
       </nav>
 
-      {/* Cost-Free Badge Footer */}
-      <div className="p-4 border-t border-slate-800/80">
-        <div className="p-3.5 rounded-xl bg-gradient-to-br from-slate-800/80 to-slate-900 border border-slate-700/50">
-          <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400">
-            <Flame className="w-4 h-4 text-emerald-400" />
-            <span>نظام مجاني 100% (Zero Cost)</span>
+      {/* User Info & Logout Footer */}
+      <div className="p-4 border-t border-slate-800/80 space-y-3">
+        {/* User Card */}
+        <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 overflow-hidden">
+            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+              <UserCheck className="w-4 h-4" />
+            </div>
+            <div className="overflow-hidden">
+              <p className="text-xs font-semibold text-white truncate">
+                {currentUser?.name || 'المدير'}
+              </p>
+              <p className="text-[10px] text-slate-400 font-mono truncate" dir="ltr">
+                {currentUser?.email || 'admin@creziax.cloud'}
+              </p>
+            </div>
           </div>
-          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
-            يعمل عبر SQLite + Gemini Free + Nodemailer Hostinger.
-          </p>
+
+          <button
+            onClick={handleLogout}
+            title="تسجيل الخروج"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Cost-Free Badge */}
+        <div className="p-2.5 rounded-xl bg-slate-800/40 border border-slate-800 text-center">
+          <div className="flex items-center justify-center gap-1.5 text-[11px] font-semibold text-emerald-400">
+            <Flame className="w-3.5 h-3.5" />
+            <span>نظام محلي مجاني (Zero Cost)</span>
+          </div>
         </div>
       </div>
     </aside>

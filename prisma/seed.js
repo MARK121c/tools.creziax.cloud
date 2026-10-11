@@ -101,6 +101,26 @@ async function main() {
     });
   }
 
+  // Seed default admin user
+  const crypto = require('crypto');
+  const userCount = await prisma.user.count();
+  if (userCount === 0) {
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@creziax.cloud';
+    const rawPassword = process.env.ADMIN_PASSWORD || 'admin123';
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hash = crypto.pbkdf2Sync(rawPassword, salt, 1000, 64, 'sha512').toString('hex');
+    const hashedPassword = `${salt}:${hash}`;
+
+    await prisma.user.create({
+      data: {
+        email: adminEmail,
+        password: hashedPassword,
+        name: 'مدير النظام',
+      },
+    });
+    console.log(`Default admin created: ${adminEmail} (password: ${rawPassword})`);
+  }
+
   // Check if sample leads already exist
   const count = await prisma.lead.count();
   if (count === 0) {
