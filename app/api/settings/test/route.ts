@@ -3,6 +3,8 @@ import { verifySMTPConnection } from '@/lib/mailer';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getSetting } from '@/lib/settings';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const { target } = await req.json();

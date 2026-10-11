@@ -3,6 +3,8 @@ import { prisma } from '@/lib/prisma';
 import { generateMeetingBriefing } from '@/lib/gemini';
 import { sendTelegramNotification } from '@/lib/telegram';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
