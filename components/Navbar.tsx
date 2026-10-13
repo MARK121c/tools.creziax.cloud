@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Sparkles, Mail, Plus, Menu, X, LogOut, UserCheck } from 'lucide-react';
+import { Sparkles, Mail, Plus, Menu, X, LogOut, Boxes, Video } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 export const Navbar: React.FC = () => {
@@ -30,17 +30,19 @@ export const Navbar: React.FC = () => {
   };
 
   const navLinks = [
-    { name: 'لوحة المؤشرات', href: '/' },
+    { name: 'بوابة الأدوات المركزية', href: '/tools', icon: Boxes },
+    { name: 'لوحة مؤشرات المبيعات', href: '/' },
     { name: 'صائد يوتيوب', href: '/scraper' },
     { name: 'CRM العملاء', href: '/crm' },
     { name: 'عروض AI', href: '/pitches' },
     { name: 'الاجتماعات', href: '/meetings' },
+    { name: 'مسجل الاجتماعات (Desktop)', href: '/tools/meeting-recorder', icon: Video },
     { name: 'الإعدادات والأمان', href: '/settings' },
   ];
 
   return (
     <header className="bg-slate-900/60 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-30 px-4 md:px-8 py-3.5 flex items-center justify-between">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           className="md:hidden p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
@@ -48,26 +50,34 @@ export const Navbar: React.FC = () => {
           {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
 
-        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/50 px-3 py-1.5 rounded-full border border-slate-700/50">
+        <Link
+          href="/tools"
+          className="flex items-center gap-2 text-xs font-bold text-slate-200 bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 px-3 py-1.5 rounded-xl transition-all"
+        >
+          <Boxes className="w-4 h-4 text-blue-400" />
+          <span>مركز الأدوات</span>
+        </Link>
+
+        <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/40 px-3 py-1.5 rounded-full border border-slate-700/40">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>النظام محمي ومشفر بالكامل</span>
+          <span>منظومة Creziax النشطة</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.5">
         <Link
-          href="/scraper"
-          className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-md shadow-blue-600/20 transition-all"
+          href="/tools/meeting-recorder"
+          className="hidden lg:flex items-center gap-1.5 bg-cyan-950/40 hover:bg-cyan-900/40 text-cyan-300 border border-cyan-800/40 px-3 py-2 rounded-xl text-xs font-semibold transition-all"
         >
-          <Plus className="w-4 h-4" />
-          <span>جلب عملاء جدد</span>
+          <Video className="w-3.5 h-3.5" />
+          <span>مسجل الاجتماعات</span>
         </Link>
         <Link
-          href="/crm"
-          className="hidden sm:flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-medium border border-slate-700/60 transition-all"
+          href="/scraper"
+          className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold shadow-md shadow-blue-600/20 transition-all"
         >
-          <Mail className="w-4 h-4 text-amber-400" />
-          <span>إرسال الحملات</span>
+          <Plus className="w-4 h-4" />
+          <span>جلب عملاء</span>
         </Link>
         <button
           onClick={handleLogout}
