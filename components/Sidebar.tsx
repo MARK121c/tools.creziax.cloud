@@ -17,6 +17,7 @@ import {
   Boxes,
   Video,
   Layers,
+  Download,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -135,6 +136,23 @@ export const Sidebar: React.FC = () => {
               <span>مسجل الاجتماعات</span>
             </div>
             <span className="text-[9px] bg-cyan-950 text-cyan-300 border border-cyan-800/40 px-1.5 py-0.5 rounded font-mono">
+              Desktop
+            </span>
+          </Link>
+
+          <Link
+            href="/tools/video-downloader"
+            className={`flex items-center justify-between px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+              pathname === '/tools/video-downloader'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Download className="w-4 h-4 text-rose-400" />
+              <span>محمل الفيديوهات</span>
+            </div>
+            <span className="text-[9px] bg-rose-950 text-rose-300 border border-rose-800/40 px-1.5 py-0.5 rounded font-mono">
               Desktop
             </span>
           </Link>

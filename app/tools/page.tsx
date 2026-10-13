@@ -6,6 +6,7 @@ import {
   Boxes,
   Sparkles,
   Video,
+  Download,
   ExternalLink,
   ArrowRight,
   ShieldCheck,
@@ -65,6 +66,27 @@ export default function ToolsHubPage() {
       status: 'active',
     },
     {
+      id: 'video-downloader',
+      title: 'محمل فيديوهات وقصاصات يوتيوب بجودة فائقة',
+      subtitle: 'Pro Video & Clip Downloader (YouTube, TikTok, IG)',
+      badge: 'أداة مدمجة نشطة',
+      badgeColor: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+      icon: Download,
+      iconBg: 'from-rose-600 via-pink-600 to-indigo-600',
+      description:
+        'أداة تنزيل وسائط احترافية تدعم يوتيوب وتيك توك وإنستقرام بأعلى جودة (4K, 1080p, MP3) مع ميزة حصرية لاقتطاع وتنزيل أجزاء معينة فقط من الفيديو بالثواني والدقائق.',
+      features: [
+        'تنزيل بأعلى دقة 4K و 1080p Full HD أو استخراج صوت MP3',
+        'اقتطاع وتنزيل جزء محدد فقط (Start & End Time) لتوفير الوقت وسرعة النت',
+        'دعم يوتيوب وتيك توك بدون علامة مائية وإنستقرام ريلز وبوستات متعددة',
+        'واجهة Dark Mode عصرية مع شريط تقدم مباشر وخادم Express مدمج',
+      ],
+      primaryLink: '/tools/video-downloader',
+      primaryLabel: 'عرض تفاصيل محمل الفيديوهات والتشغيل',
+      techStack: ['Node.js', 'Express', 'yt-dlp', 'FFmpeg', 'Vanilla JS'],
+      status: 'active',
+    },
+    {
       id: 'future-tools',
       title: 'إضافة أداة جديدة للمنظومة',
       subtitle: 'Modular Workspaces & Custom Tools',
@@ -107,20 +129,27 @@ export default function ToolsHubPage() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2.5">
             <Link
               href="/"
-              className="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 transition-all flex items-center gap-2"
+              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg shadow-blue-600/20 transition-all flex items-center gap-1.5"
             >
               <Sparkles className="w-4 h-4" />
               <span>أداة المبيعات</span>
             </Link>
             <Link
               href="/tools/meeting-recorder"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-5 py-2.5 rounded-xl text-xs font-medium border border-slate-700 transition-all flex items-center gap-2"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-medium border border-slate-700 transition-all flex items-center gap-1.5"
             >
               <Video className="w-4 h-4 text-cyan-400" />
               <span>مسجل الاجتماعات</span>
+            </Link>
+            <Link
+              href="/tools/video-downloader"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-medium border border-slate-700 transition-all flex items-center gap-1.5"
+            >
+              <Download className="w-4 h-4 text-rose-400" />
+              <span>محمل الفيديوهات</span>
             </Link>
           </div>
         </div>
@@ -233,9 +262,9 @@ export default function ToolsHubPage() {
             </p>
             <div className="bg-slate-950 border border-slate-800 rounded-xl p-3 font-mono text-[11px] text-slate-300" dir="ltr">
               <span className="text-blue-400">tools/</span><br />
-              &nbsp;&nbsp;├── <span className="text-emerald-400">meeting-recorder/</span> &nbsp;&nbsp;# أداة مسجل الاجتماعات (Python + PyQt6 + FFmpeg)<br />
-              &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├── main.py, gui.py, audio_engine.py, video_engine.py, muxer.py, run.bat<br />
-              &nbsp;&nbsp;└── <span className="text-purple-400">ai-sales-crm/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# نظام المبيعات والـ CRM (Next.js 14 Web App)
+              &nbsp;&nbsp;├── <span className="text-emerald-400">meeting-recorder/</span> &nbsp;&nbsp;&nbsp;&nbsp;# أداة مسجل الاجتماعات (Python + PyQt6 + FFmpeg)<br />
+              &nbsp;&nbsp;├── <span className="text-rose-400">video-downloader/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# أداة تنزيل واقتطاع فيديوهات يوتيوب (Node + yt-dlp)<br />
+              &nbsp;&nbsp;└── <span className="text-purple-400">ai-sales-crm/</span> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# نظام المبيعات والـ CRM (Next.js 14 Web App)
             </div>
           </div>
         </div>
