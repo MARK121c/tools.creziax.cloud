@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { getYtDlpPath, TEMP_DIR, downloadTasks } from '@/lib/downloader';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'الرجاء إدخال رابط الفيديو' }, { status: 400 });
     }
 
-    const taskId = uuidv4();
+    const taskId = crypto.randomUUID();
     const taskDir = path.join(TEMP_DIR, taskId);
     fs.mkdirSync(taskDir, { recursive: true });
 
