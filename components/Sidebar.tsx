@@ -18,6 +18,7 @@ import {
   Video,
   Layers,
   Download,
+  Server,
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -158,7 +159,32 @@ export const Sidebar: React.FC = () => {
           </Link>
         </div>
 
-        {/* Section 3: Settings */}
+        {/* Section 3: Server Daemons */}
+        <div className="space-y-1">
+          <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+            <Server className="w-3 h-3 text-emerald-400" />
+            <span>قسم خوادم السيرفر (24/7)</span>
+          </div>
+
+          <Link
+            href="/tools/server-meeting-recorder"
+            className={`flex items-center justify-between px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+              pathname === '/tools/server-meeting-recorder'
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Server className="w-4 h-4 text-emerald-400" />
+              <span>خادم تسجيل الاجتماعات</span>
+            </div>
+            <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-800/40 px-1.5 py-0.5 rounded font-mono">
+              VPS 24/7
+            </span>
+          </Link>
+        </div>
+
+        {/* Section 4: Settings */}
         <div className="space-y-1 pt-1">
           <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
             الإعدادات العامة

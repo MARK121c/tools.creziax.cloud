@@ -1,0 +1,25 @@
+[Unit]
+Description=Creziax Headless Server Meeting Recorder Daemon
+After=network.target sound.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/creziax-meeting-recorder
+Environment="PATH=/opt/creziax-meeting-recorder/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+EnvironmentFile=/opt/creziax-meeting-recorder/.env
+ExecStart=/opt/creziax-meeting-recorder/venv/bin/python main.py
+
+# Auto-recovery & Health
+Restart=always
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# Resource limits & isolation
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
