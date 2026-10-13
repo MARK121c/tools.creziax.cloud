@@ -2,7 +2,8 @@
 # Node.js 20 Alpine with SQLite support
 
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl
+RUN apk add --no-cache libc6-compat openssl ffmpeg python3 py3-pip && \
+    (pip install --no-cache-dir yt-dlp --break-system-packages || true)
 WORKDIR /app
 
 # Dependencies Stage
@@ -45,10 +46,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Grant full write access to SQLite database directory and files
-RUN mkdir -p /app/prisma && \
+# Grant full write access to SQLite database directory and storage directories
+RUN mkdir -p /app/prisma /app/storage/recordings /app/storage/downloads && \
     chown -R nextjs:nodejs /app && \
-    chmod -R 777 /app/prisma
+    chmod -R 777 /app/prisma /app/storage
 
 # Entrypoint script to migrate database on first boot
 COPY --chown=nextjs:nodejs docker-entrypoint.sh ./

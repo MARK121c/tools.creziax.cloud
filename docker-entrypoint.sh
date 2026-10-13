@@ -1,9 +1,10 @@
 #!/bin/sh
 set -e
 
-# Ensure SQLite directory exists and has full write permissions for WAL mode
-mkdir -p /app/prisma
+# Ensure SQLite and Storage directories exist and have full write permissions
+mkdir -p /app/prisma /app/storage/recordings /app/storage/downloads
 chmod 777 /app/prisma 2>/dev/null || true
+chmod -R 777 /app/storage 2>/dev/null || true
 if [ -f /app/prisma/dev.db ]; then
   chmod 666 /app/prisma/dev.db 2>/dev/null || true
 fi

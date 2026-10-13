@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import {
   Download,
@@ -19,191 +19,423 @@ import {
   FileCode,
   Layers,
   Zap,
+  RefreshCw,
+  AlertCircle,
+  Music,
 } from 'lucide-react';
 
-export default function VideoDownloaderPage() {
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+interface FormatOption {
+  id: string;
+  label: string;
+  ext: string;
+  height: number;
+}
 
-  const copyToClipboard = (text: string, index: number) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+interface VideoMetadata {
+  title: string;
+  thumbnail: string;
+  duration: number;
+  durationString: string;
+  channel: string;
+  description: string;
+  formats: FormatOption[];
+}
+
+export default function VideoDownloaderPage() {
+  const [platform, setPlatform] = useState<'youtube' | 'tiktok' | 'instagram'>('youtube');
+  const [url, setUrl] = useState('');
+  const [isLoadingInfo, setIsLoadingInfo] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [videoInfo, setVideoInfo] = useState<VideoMetadata | null>(null);
+
+  // Download options
+  const [selectedQuality, setSelectedQuality] = useState<string>('best');
+  const [audioOnly, setAudioOnly] = useState(false);
+  const [isTrimming, setIsTrimming] = useState(false);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+
+  // Download task progress
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [downloadStatusText, setDownloadStatusText] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadReady, setDownloadReady] = useState(false);
+  const [downloadFileName, setDownloadFileName] = useState('');
+
+  // Paste from clipboard helper
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setUrl(text);
+    } catch {
+      // ignore
+    }
   };
 
-  const codeSnippets = [
-    {
-      title: 'التشغيل بنقرة واحدة على ويندوز (One-Click Launcher):',
-      command: 'tools\\video-downloader\\start.bat',
-    },
-    {
-      title: 'تثبيت الحزم وتشغيل الخادم عبر Node.js:',
-      command: 'cd tools/video-downloader && npm install && node server.js',
-    },
-    {
-      title: 'رابط فتح الواجهة المحلية بعد التشغيل:',
-      command: 'http://localhost:3500',
-    },
-  ];
+  // Fetch video information
+  const handleFetchInfo = async () => {
+    if (!url.trim()) {
+      setErrorMsg('الرجاء إدخال رابط الفيديو أولاً');
+      return;
+    }
 
-  const features = [
-    {
-      icon: Video,
-      color: 'text-rose-400 bg-rose-500/10 border-rose-500/20',
-      title: 'أعلى دقة متاحة (4K & 1080p)',
-      desc: 'دعم استخراج وتنزيل الجودات الأصلية الفائقة 4K و 1080p Full HD و 720p HD أو استخراج الصوت النقي MP3.',
-    },
-    {
-      icon: Scissors,
-      color: 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-      title: 'اقتطاع وتنزيل أجزاء معينة فقط',
-      desc: 'إمكانية تحديد وقت البداية والنهاية (Start & End Time) وتنزيل اللقطة المطلوبة فقط مباشرة لتوفير الوقت وسرعة النت.',
-    },
-    {
-      icon: Layers,
-      color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20',
-      title: 'دعم متعدد المنصات (3-in-1)',
-      desc: 'دعم كامل لمنصات يوتيوب (بما في ذلك Shorts)، وتيك توك بدون علامات مائية، وإنستقرام للريلز والمنشورات المتعددة.',
-    },
-  ];
+    setIsLoadingInfo(true);
+    setErrorMsg(null);
+    setVideoInfo(null);
+    setDownloadReady(false);
 
-  const projectFiles = [
-    {
-      name: 'server.js',
-      description: 'خادم Express الخلفي الذي يتعامل مع yt-dlp ومسارات الفحص /api/info والتحميل /api/download',
-      tag: 'Express Backend',
-    },
-    {
-      name: 'start.bat',
-      description: 'سكربت ويندوز المباشر لتثبيت التبعيات وفتح المتصفح وتشغيل الخادم على المنفذ 3500',
-      tag: 'Windows Launcher',
-    },
-    {
-      name: 'yt-dlp.exe',
-      description: 'النسخة التنفيذية المحدثة من محرك yt-dlp السريع لاستخراج وتنزيل الوسائط',
-      tag: 'Engine Binary',
-    },
-    {
-      name: 'static/index.html',
-      description: 'واجهة المستخدم الأمامية المصممة بـ Dark Mode مع شريط التقدم والمؤقت',
-      tag: 'UI Layout',
-    },
-    {
-      name: 'static/app.js',
-      description: 'معالجة جلب معلومات الفيديو والتحكم في خيارات الجودة والاقتطاع والتحميل المباشر',
-      tag: 'Client Logic',
-    },
-  ];
+    try {
+      const res = await fetch('/api/downloader/info', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: url.trim(), platform }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'فشل في استخراج معلومات الفيديو');
+      }
+
+      setVideoInfo(data.data);
+      if (data.data.formats && data.data.formats.length > 0) {
+        setSelectedQuality(data.data.formats[0].height.toString());
+      } else {
+        setSelectedQuality('best');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'حدث خطأ أثناء جلب الفيديو');
+    } finally {
+      setIsLoadingInfo(false);
+    }
+  };
+
+  // Start download task
+  const handleStartDownload = async () => {
+    if (!url) return;
+    setIsDownloading(true);
+    setDownloadProgress(0);
+    setDownloadStatusText('جاري إرسال طلب التحميل...');
+    setDownloadReady(false);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch('/api/downloader/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url,
+          quality: audioOnly ? 'audio' : selectedQuality,
+          audioOnly,
+          startTime: isTrimming ? startTime : undefined,
+          endTime: isTrimming ? endTime : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.error || 'فشل في بدء عملية التحميل');
+      }
+
+      setTaskId(data.taskId);
+      pollDownloadStatus(data.taskId);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'خطأ أثناء بدء التحميل');
+      setIsDownloading(false);
+    }
+  };
+
+  // Poll download progress
+  const pollDownloadStatus = (id: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/downloader/status/${id}`);
+        const data = await res.json();
+
+        if (data.success) {
+          setDownloadProgress(data.progress || 0);
+          setDownloadStatusText(data.message || 'جاري المعالجة...');
+
+          if (data.status === 'done') {
+            clearInterval(interval);
+            setIsDownloading(false);
+            setDownloadReady(true);
+            setDownloadFileName(data.fileName || 'video.mp4');
+          } else if (data.status === 'error') {
+            clearInterval(interval);
+            setIsDownloading(false);
+            setErrorMsg(data.error || 'حدث خطأ أثناء التنزيل');
+          }
+        }
+      } catch (err) {
+        clearInterval(interval);
+        setIsDownloading(false);
+      }
+    }, 1500);
+  };
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-5xl mx-auto pb-12">
-      {/* Header Bar */}
-      <div className="glass-panel p-6 sm:p-8 border border-slate-800 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-rose-600 via-pink-600 to-indigo-600 flex items-center justify-center shadow-xl shadow-rose-500/20 text-white shrink-0">
-              <Download className="w-7 h-7" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
-                  Tool #3 - Media & Video
-                </span>
-                <span className="text-xs text-slate-400 font-mono" dir="ltr">tools/video-downloader/</span>
-              </div>
-              <h1 className="text-2xl font-black text-white">أداة تنزيل واقتطاع فيديوهات يوتيوب والوسائط</h1>
-              <p className="text-xs text-slate-300 mt-1">
-                تنزيل الفيديوهات بأعلى دقة ممكنة (4K / 1080p / MP3) مع ميزة اقتطاع جزء محدد بالدقائق والثواني بدقة.
-              </p>
-            </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 space-y-8 max-w-5xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-bold text-rose-400 uppercase tracking-wider mb-1">
+            <Download className="w-4 h-4" />
+            <span>محمل الوسائط المباشر • Creziax Media Downloader</span>
           </div>
-
-          <Link
-            href="/tools"
-            className="text-xs text-slate-400 hover:text-white flex items-center gap-1.5 self-start sm:self-center bg-slate-800/80 px-3.5 py-2 rounded-xl border border-slate-700"
-          >
-            <span>العودة لمركز الأدوات</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          <h1 className="text-2xl md:text-3xl font-black text-white">
+            أداة تنزيل الفيديوهات وقص الأجزاء مباشرة من الموقع
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            تعمل مباشرة داخل المتصفح بدون تثبيت برامج • يوتيوب وتيك توك وإنستقرام بأعلى دقة واقتطاع بالثواني
+          </p>
         </div>
+
+        <Link
+          href="/tools"
+          className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors bg-slate-900 border border-slate-800 px-3.5 py-2 rounded-xl"
+        >
+          <ArrowRight className="w-3.5 h-3.5" />
+          <span>بوابة الأدوات</span>
+        </Link>
       </div>
 
-      {/* Feature Highlights Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {features.map((feat, idx) => {
-          const Icon = feat.icon;
-          return (
-            <div key={idx} className="glass-panel p-5 border border-slate-800 rounded-xl space-y-2">
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${feat.color}`}>
-                <Icon className="w-4 h-4" />
+      {/* Main Downloader Interface */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl">
+        {/* Platform Tabs */}
+        <div className="flex justify-center gap-2.5">
+          {[
+            { id: 'youtube', label: 'يوتيوب YouTube', color: 'hover:text-red-400' },
+            { id: 'tiktok', label: 'تيك توك TikTok', color: 'hover:text-cyan-400' },
+            { id: 'instagram', label: 'إنستقرام Instagram', color: 'hover:text-pink-400' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setPlatform(tab.id as any)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                platform === tab.id
+                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/25'
+                  : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* URL Input Box */}
+        <div className="space-y-2">
+          <label className="text-xs font-semibold text-slate-300 block">رابط الفيديو:</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleFetchInfo()}
+              placeholder="الصق رابط الفيديو من يوتيوب، تيك توك، أو إنستقرام هنا..."
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors"
+            />
+            <button
+              onClick={handlePaste}
+              type="button"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-3 rounded-xl text-xs font-bold border border-slate-700 transition-all"
+              title="لصق من الحافظة"
+            >
+              لصق
+            </button>
+          </div>
+        </div>
+
+        {/* Action Button: Fetch Info */}
+        <button
+          onClick={handleFetchInfo}
+          disabled={isLoadingInfo}
+          className="w-full bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
+        >
+          {isLoadingInfo ? (
+            <>
+              <RefreshCw className="w-4 h-4 animate-spin" />
+              <span>جاري استخراج معلومات الفيديو...</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4" />
+              <span>جلب معلومات الفيديو وخيارات التنزيل</span>
+            </>
+          )}
+        </button>
+
+        {/* Error Alert */}
+        {errorMsg && (
+          <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        {/* Loaded Video Details & Options Card */}
+        {videoInfo && (
+          <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-6 animate-fade-in">
+            {/* Video Overview */}
+            <div className="flex flex-col md:flex-row gap-4 items-start">
+              {videoInfo.thumbnail && (
+                <div className="w-full md:w-56 aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shrink-0">
+                  <img
+                    src={videoInfo.thumbnail}
+                    alt={videoInfo.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5 flex-1">
+                <h3 className="font-bold text-sm md:text-base text-white leading-snug">
+                  {videoInfo.title}
+                </h3>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                  <span>القناة: <b className="text-slate-200">{videoInfo.channel}</b></span>
+                  <span>•</span>
+                  <span>المدة: <b className="text-slate-200">{videoInfo.durationString}</b></span>
+                </div>
               </div>
-              <h3 className="text-sm font-bold text-white">{feat.title}</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">{feat.desc}</p>
             </div>
-          );
-        })}
-      </div>
 
-      {/* Quick Launch & Terminal Commands */}
-      <div className="glass-panel p-6 border border-slate-800 rounded-2xl space-y-5">
-        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
-          <Terminal className="w-5 h-5 text-rose-400" />
-          <h2 className="text-base font-bold text-white">طريقة التشغيل السريع للأداة (Quick Start)</h2>
-        </div>
-
-        <div className="space-y-4">
-          {codeSnippets.map((item, idx) => (
-            <div key={idx} className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-300">
-                {item.title}
-              </label>
-              <div className="relative bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between font-mono text-xs text-slate-200">
-                <span dir="ltr">{item.command}</span>
+            {/* Quality and Format Selectors */}
+            <div className="space-y-3 pt-4 border-t border-slate-800/80">
+              <label className="text-xs font-semibold text-slate-300 block">اختر الجودة أو الصيغة:</label>
+              <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => copyToClipboard(item.command, idx)}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-                  title="نسخ الأمر"
+                  onClick={() => { setAudioOnly(false); setSelectedQuality('best'); }}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                    !audioOnly && selectedQuality === 'best'
+                      ? 'bg-rose-600 text-white border-rose-500'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
                 >
-                  {copiedIndex === idx ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
+                  أعلى جودة متاحة (Best)
+                </button>
+
+                {videoInfo.formats.map((fmt) => (
+                  <button
+                    key={fmt.id}
+                    onClick={() => { setAudioOnly(false); setSelectedQuality(fmt.height.toString()); }}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
+                      !audioOnly && selectedQuality === fmt.height.toString()
+                        ? 'bg-rose-600 text-white border-rose-500'
+                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {fmt.label}
+                  </button>
+                ))}
+
+                <button
+                  onClick={() => setAudioOnly(true)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                    audioOnly
+                      ? 'bg-indigo-600 text-white border-indigo-500'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
+                  }`}
+                >
+                  <Music className="w-3.5 h-3.5" />
+                  <span>صوت فقط MP3</span>
                 </button>
               </div>
             </div>
-          ))}
-        </div>
 
-        <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/80 flex items-center gap-3">
-          <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-          <p className="text-xs text-slate-400 leading-relaxed">
-            تم ضبط المنفذ الافتراضي ليعمل على <code className="text-amber-300 font-mono">http://localhost:3500</code> حتى لا يتعارض مع منفذ لوحة تحكم السيلز (3000).
-          </p>
-        </div>
-      </div>
-
-      {/* Code Structure Table */}
-      <div className="glass-panel p-6 border border-slate-800 rounded-2xl space-y-4">
-        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
-          <FileCode className="w-5 h-5 text-purple-400" />
-          <h2 className="text-base font-bold text-white">هيكلية ملفات الأداة داخل المجلد المخصص</h2>
-        </div>
-
-        <div className="divide-y divide-slate-800/80">
-          {projectFiles.map((file, idx) => (
-            <div key={idx} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-3">
-                <code className="text-xs font-bold text-rose-400 font-mono bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-800/30" dir="ltr">
-                  {file.name}
-                </code>
-                <span className="text-xs text-slate-300">{file.description}</span>
+            {/* Trimming & Clipping Section */}
+            <div className="space-y-3 pt-4 border-t border-slate-800/80">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Scissors className="w-4 h-4 text-cyan-400" />
+                  <span className="text-xs font-bold text-white">اقتطاع جزء محدد فقط من الفيديو (Clip Trim)</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={isTrimming}
+                  onChange={(e) => setIsTrimming(e.target.checked)}
+                  className="w-4 h-4 accent-rose-500 rounded cursor-pointer"
+                />
               </div>
-              <span className="text-[10px] text-slate-400 font-mono bg-slate-950 px-2 py-0.5 rounded border border-slate-800 self-start sm:self-center">
-                {file.tag}
-              </span>
+
+              {isTrimming && (
+                <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-900 rounded-xl border border-slate-800">
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">وقت البدء (HH:MM:SS أو بالثواني):</label>
+                    <input
+                      type="text"
+                      placeholder="00:01:30"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-slate-400 block mb-1">وقت الانتهاء (HH:MM:SS أو بالثواني):</label>
+                    <input
+                      type="text"
+                      placeholder="00:02:45"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-          ))}
-        </div>
+
+            {/* Execute Download Button */}
+            {!downloadReady ? (
+              <button
+                onClick={handleStartDownload}
+                disabled={isDownloading}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
+              >
+                {isDownloading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>{downloadStatusText} ({downloadProgress.toFixed(0)}%)</span>
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>تحميل الفيديو الآن على السيرفر</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-3">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>اكتملت معالجة الفيديو بنجاح! ({downloadFileName})</span>
+                </div>
+                <a
+                  href={`/api/downloader/file/${taskId}`}
+                  download={downloadFileName}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-lg shadow-emerald-600/25"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>حفظ الملف على جهازك الآن</span>
+                </a>
+              </div>
+            )}
+
+            {/* Download Progress Bar */}
+            {isDownloading && (
+              <div className="space-y-1.5">
+                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-2 transition-all duration-300"
+                    style={{ width: `${downloadProgress}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                  <span>{downloadStatusText}</span>
+                  <span>{downloadProgress.toFixed(0)}%</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
