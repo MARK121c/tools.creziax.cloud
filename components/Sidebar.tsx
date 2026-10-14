@@ -23,6 +23,7 @@ import {
   Globe,
   Wrench,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { AddToolModal } from '@/components/AddToolModal';
 
@@ -61,6 +62,15 @@ export const Sidebar: React.FC = () => {
       .catch(() => {});
 
     loadCustomTools();
+
+    const handleToolsUpdated = () => {
+      loadCustomTools();
+    };
+
+    window.addEventListener('custom-tools-updated', handleToolsUpdated);
+    return () => {
+      window.removeEventListener('custom-tools-updated', handleToolsUpdated);
+    };
   }, []);
 
   const loadCustomTools = () => {
@@ -70,6 +80,22 @@ export const Sidebar: React.FC = () => {
         if (data?.tools) setCustomTools(data.tools);
       })
       .catch(() => {});
+  };
+
+  const handleDeleteCustomTool = async (id: string, name: string) => {
+    if (!confirm(`هل أنت متأكد من حذف أداة "${name}" نهائياً من المنظومة؟`)) return;
+    try {
+      const res = await fetch(`/api/custom-tools/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setCustomTools((prev) => prev.filter((t) => t.id !== id));
+        window.dispatchEvent(new Event('custom-tools-updated'));
+        if (pathname === `/tools/custom/${id}`) {
+          router.push('/tools');
+        }
+      }
+    } catch (err) {
+      alert('فشل في حذف الأداة');
+    }
   };
 
   const handleLogout = async () => {
@@ -251,22 +277,37 @@ export const Sidebar: React.FC = () => {
                     const CustomIcon = iconMap[t.icon || 'Globe'] || Globe;
                     const isCurrent = activeToolKey === `custom-${t.id}`;
                     return (
-                      <Link
+                      <div
                         key={t.id}
-                        href={`/tools/custom/${t.id}`}
-                        onClick={() => setToolsDropdownOpen(false)}
-                        className={`flex items-center justify-between p-2 rounded-lg text-xs transition-all ${
+                        className={`group flex items-center justify-between p-2 rounded-lg text-xs transition-all ${
                           isCurrent
                             ? 'bg-indigo-600/20 text-indigo-300 font-bold border border-indigo-500/30'
                             : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <CustomIcon className="w-3.5 h-3.5 text-indigo-400" />
+                        <Link
+                          href={`/tools/custom/${t.id}`}
+                          onClick={() => setToolsDropdownOpen(false)}
+                          className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden"
+                        >
+                          <CustomIcon className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
                           <span className="truncate">{t.name}</span>
+                        </Link>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleDeleteCustomTool(t.id, t.name);
+                            }}
+                            title="حذف الأداة نهائياً"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-all"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                          <span className="text-[9px] font-mono text-emerald-400">Live</span>
                         </div>
-                        <span className="text-[9px] font-mono text-emerald-400">Live</span>
-                      </Link>
+                      </div>
                     );
                   })}
                 </>
@@ -380,21 +421,36 @@ export const Sidebar: React.FC = () => {
               const CustomIcon = iconMap[tool.icon || 'Globe'] || Globe;
               const isActive = pathname === `/tools/custom/${tool.id}`;
               return (
-                <Link
+                <div
                   key={tool.id}
-                  href={`/tools/custom/${tool.id}`}
-                  className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${
+                  className={`group flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-all ${
                     isActive
                       ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/25'
                       : 'text-slate-300 hover:text-white hover:bg-slate-900/60'
                   }`}
                 >
-                  <div className="flex items-center gap-2 overflow-hidden">
+                  <Link
+                    href={`/tools/custom/${tool.id}`}
+                    className="flex items-center gap-2 overflow-hidden flex-1 min-w-0"
+                  >
                     <CustomIcon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-white' : 'text-indigo-400'}`} />
                     <span className="truncate">{tool.name}</span>
+                  </Link>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDeleteCustomTool(tool.id, tool.name);
+                      }}
+                      title="حذف الأداة نهائياً"
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-all"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-[9px] text-emerald-400 font-mono opacity-80">Live</span>
                   </div>
-                  <span className="text-[9px] text-emerald-400 font-mono opacity-80">Live</span>
-                </Link>
+                </div>
               );
             })}
 

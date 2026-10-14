@@ -53,6 +53,15 @@ export default function ToolsHubPage() {
 
   useEffect(() => {
     fetchCustomTools();
+
+    const handleUpdated = () => {
+      fetchCustomTools();
+    };
+
+    window.addEventListener('custom-tools-updated', handleUpdated);
+    return () => {
+      window.removeEventListener('custom-tools-updated', handleUpdated);
+    };
   }, []);
 
   const fetchCustomTools = async () => {
@@ -76,6 +85,9 @@ export default function ToolsHubPage() {
       const res = await fetch(`/api/custom-tools/${id}`, { method: 'DELETE' });
       if (res.ok) {
         setCustomTools((prev) => prev.filter((t) => t.id !== id));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('custom-tools-updated'));
+        }
       }
     } catch (err) {
       alert('فشل في حذف الأداة');

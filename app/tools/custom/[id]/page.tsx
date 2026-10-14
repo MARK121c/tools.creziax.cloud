@@ -79,6 +79,9 @@ export default function CustomToolViewerPage({ params }: { params: { id: string 
     try {
       const res = await fetch(`/api/custom-tools/${tool.id}`, { method: 'DELETE' });
       if (res.ok) {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('custom-tools-updated'));
+        }
         router.push('/tools');
         router.refresh();
       }

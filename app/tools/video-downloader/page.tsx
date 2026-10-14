@@ -1,27 +1,20 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import {
   Download,
-  Copy,
-  Check,
-  Terminal,
-  Video,
-  Clock,
   Scissors,
   CheckCircle2,
-  FolderOpen,
   ArrowRight,
-  ExternalLink,
   Sparkles,
-  Play,
-  FileCode,
-  Layers,
-  Zap,
   RefreshCw,
   AlertCircle,
   Music,
+  Check,
+  Zap,
+  Film,
+  Play,
 } from 'lucide-react';
 
 interface FormatOption {
@@ -29,6 +22,7 @@ interface FormatOption {
   label: string;
   ext: string;
   height: number;
+  qualityBadge: string;
 }
 
 interface VideoMetadata {
@@ -38,24 +32,26 @@ interface VideoMetadata {
   durationString: string;
   channel: string;
   description: string;
+  platform: string;
+  maxQuality: string;
   formats: FormatOption[];
 }
 
 export default function VideoDownloaderPage() {
-  const [platform, setPlatform] = useState<'youtube' | 'tiktok' | 'instagram'>('youtube');
+  const [platform, setPlatform] = useState<string>('auto');
   const [url, setUrl] = useState('');
   const [isLoadingInfo, setIsLoadingInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [videoInfo, setVideoInfo] = useState<VideoMetadata | null>(null);
 
-  // Download options
+  // Quality & Options
   const [selectedQuality, setSelectedQuality] = useState<string>('best');
   const [audioOnly, setAudioOnly] = useState(false);
   const [isTrimming, setIsTrimming] = useState(false);
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
 
-  // Download task progress
+  // Download Task
   const [taskId, setTaskId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadStatusText, setDownloadStatusText] = useState('');
@@ -63,17 +59,26 @@ export default function VideoDownloaderPage() {
   const [downloadReady, setDownloadReady] = useState(false);
   const [downloadFileName, setDownloadFileName] = useState('');
 
-  // Paste from clipboard helper
+  const platformTabs = [
+    { id: 'auto', label: 'كشف تلقائي', icon: Zap },
+    { id: 'youtube', label: 'يوتيوب YouTube', icon: Film },
+    { id: 'tiktok', label: 'تيك توك TikTok', icon: Film },
+    { id: 'instagram', label: 'إنستقرام Instagram', icon: Film },
+    { id: 'facebook', label: 'فيسبوك Facebook', icon: Film },
+    { id: 'pinterest', label: 'بنترست Pinterest', icon: Film },
+  ];
+
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) setUrl(text);
+      if (text) {
+        setUrl(text);
+      }
     } catch {
       // ignore
     }
   };
 
-  // Fetch video information
   const handleFetchInfo = async () => {
     if (!url.trim()) {
       setErrorMsg('الرجاء إدخال رابط الفيديو أولاً');
@@ -110,12 +115,22 @@ export default function VideoDownloaderPage() {
     }
   };
 
-  // Start download task
+  // Direct download to user device immediately
+  const triggerBrowserFileDownload = (id: string, fileName: string) => {
+    const downloadUrl = `/api/downloader/file/${id}`;
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = fileName || 'video.mp4';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   const handleStartDownload = async () => {
     if (!url) return;
     setIsDownloading(true);
     setDownloadProgress(0);
-    setDownloadStatusText('جاري إرسال طلب التحميل...');
+    setDownloadStatusText('جاري الاتصال والبدء...');
     setDownloadReady(false);
     setErrorMsg(null);
 
@@ -145,7 +160,6 @@ export default function VideoDownloaderPage() {
     }
   };
 
-  // Poll download progress
   const pollDownloadStatus = (id: string) => {
     const interval = setInterval(async () => {
       try {
@@ -160,7 +174,11 @@ export default function VideoDownloaderPage() {
             clearInterval(interval);
             setIsDownloading(false);
             setDownloadReady(true);
-            setDownloadFileName(data.fileName || 'video.mp4');
+            const targetName = data.fileName || 'video.mp4';
+            setDownloadFileName(targetName);
+
+            // DIRECT DOWNLOAD TO DEVICE:
+            triggerBrowserFileDownload(id, targetName);
           } else if (data.status === 'error') {
             clearInterval(interval);
             setIsDownloading(false);
@@ -171,23 +189,23 @@ export default function VideoDownloaderPage() {
         clearInterval(interval);
         setIsDownloading(false);
       }
-    }, 1500);
+    }, 1200);
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 space-y-8 max-w-5xl mx-auto">
+    <div className="min-h-screen bg-[#070a11] text-slate-100 p-4 md:p-8 space-y-6 max-w-5xl mx-auto select-none">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-2 text-xs font-bold text-rose-400 uppercase tracking-wider mb-1">
             <Download className="w-4 h-4" />
-            <span>محمل الوسائط المباشر • Creziax Media Downloader</span>
+            <span>محمل الوسائط المباشر • Creziax Media Suite</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-white">
-            أداة تنزيل الفيديوهات وقص الأجزاء مباشرة من الموقع
+            تحميل الفيديوهات بأعلى جودة (حتى 8K) وتنزيل فوري للجهاز
           </h1>
           <p className="text-xs text-slate-400 mt-1">
-            تعمل مباشرة داخل المتصفح بدون تثبيت برامج • يوتيوب وتيك توك وإنستقرام بأعلى دقة واقتطاع بالثواني
+            يدعم يوتيوب، تيك توك، إنستقرام، فيسبوك، وبنترست • يدعم 8K و 4K و 1080p و 720p واقتطاع المقاطع بالثواني
           </p>
         </div>
 
@@ -200,45 +218,45 @@ export default function VideoDownloaderPage() {
         </Link>
       </div>
 
-      {/* Main Downloader Interface */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl">
-        {/* Platform Tabs */}
-        <div className="flex justify-center gap-2.5">
-          {[
-            { id: 'youtube', label: 'يوتيوب YouTube', color: 'hover:text-red-400' },
-            { id: 'tiktok', label: 'تيك توك TikTok', color: 'hover:text-cyan-400' },
-            { id: 'instagram', label: 'إنستقرام Instagram', color: 'hover:text-pink-400' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setPlatform(tab.id as any)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-                platform === tab.id
-                  ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/25'
-                  : 'bg-slate-800/80 text-slate-400 hover:text-white hover:bg-slate-800'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {/* Main Console Box */}
+      <div className="bg-[#0b101c] border border-slate-800 rounded-2xl p-6 md:p-8 space-y-6 shadow-2xl">
+        {/* Platform Selection Tabs */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          {platformTabs.map((tab) => {
+            const isSelected = platform === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setPlatform(tab.id)}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30'
+                    : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
         </div>
 
         {/* URL Input Box */}
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300 block">رابط الفيديو:</label>
+          <label className="text-xs font-semibold text-slate-300 block">رابط الفيديو المراد تحميله:</label>
           <div className="flex gap-2">
             <input
               type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleFetchInfo()}
-              placeholder="الصق رابط الفيديو من يوتيوب، تيك توك، أو إنستقرام هنا..."
-              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors"
+              placeholder="الصق الرابط من يوتيوب، تيك توك، إنستقرام، فيسبوك، أو بنترست..."
+              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3.5 text-xs md:text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 transition-colors font-mono"
+              dir="ltr"
             />
             <button
               onClick={handlePaste}
               type="button"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3.5 py-3 rounded-xl text-xs font-bold border border-slate-700 transition-all"
+              className="bg-slate-900 hover:bg-slate-800 text-slate-300 px-4 py-3.5 rounded-xl text-xs font-bold border border-slate-800 transition-all shrink-0"
               title="لصق من الحافظة"
             >
               لصق
@@ -246,72 +264,85 @@ export default function VideoDownloaderPage() {
           </div>
         </div>
 
-        {/* Action Button: Fetch Info */}
+        {/* Fetch Info Button */}
         <button
           onClick={handleFetchInfo}
           disabled={isLoadingInfo}
-          className="w-full bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
+          className="w-full bg-gradient-to-r from-rose-600 via-pink-600 to-indigo-600 hover:from-rose-500 hover:to-indigo-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-rose-600/25 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
         >
           {isLoadingInfo ? (
             <>
               <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>جاري استخراج معلومات الفيديو...</span>
+              <span>جاري فحص الرابط وفك تشفير الجودات المتاحة...</span>
             </>
           ) : (
             <>
               <Sparkles className="w-4 h-4" />
-              <span>جلب معلومات الفيديو وخيارات التنزيل</span>
+              <span>جلب معلومات الفيديو وخيارات الجودة (حتى 8K)</span>
             </>
           )}
         </button>
 
         {/* Error Alert */}
         {errorMsg && (
-          <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-            <span>{errorMsg}</span>
+          <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-bold">تنبيه:</span>
+              <p className="leading-relaxed">{errorMsg}</p>
+            </div>
           </div>
         )}
 
-        {/* Loaded Video Details & Options Card */}
+        {/* Loaded Video Information Card */}
         {videoInfo && (
           <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 space-y-6 animate-fade-in">
-            {/* Video Overview */}
+            {/* Overview */}
             <div className="flex flex-col md:flex-row gap-4 items-start">
               {videoInfo.thumbnail && (
-                <div className="w-full md:w-56 aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shrink-0">
+                <div className="w-full md:w-56 aspect-video rounded-xl overflow-hidden bg-slate-900 border border-slate-800 shrink-0 relative">
                   <img
                     src={videoInfo.thumbnail}
                     alt={videoInfo.title}
                     className="w-full h-full object-cover"
                   />
+                  <div className="absolute top-2 right-2 bg-black/80 backdrop-blur-md px-2 py-0.5 rounded text-[10px] font-mono text-emerald-400 border border-emerald-500/30 font-bold">
+                    {videoInfo.maxQuality}
+                  </div>
                 </div>
               )}
-              <div className="space-y-1.5 flex-1">
+              <div className="space-y-2 flex-1">
                 <h3 className="font-bold text-sm md:text-base text-white leading-snug">
                   {videoInfo.title}
                 </h3>
                 <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                  <span>القناة: <b className="text-slate-200">{videoInfo.channel}</b></span>
+                  <span>الناشر: <b className="text-slate-200">{videoInfo.channel}</b></span>
                   <span>•</span>
                   <span>المدة: <b className="text-slate-200">{videoInfo.durationString}</b></span>
+                  <span>•</span>
+                  <span>أعلى دقة: <b className="text-emerald-400">{videoInfo.maxQuality}</b></span>
                 </div>
               </div>
             </div>
 
-            {/* Quality and Format Selectors */}
+            {/* Quality & Format Buttons */}
             <div className="space-y-3 pt-4 border-t border-slate-800/80">
-              <label className="text-xs font-semibold text-slate-300 block">اختر الجودة أو الصيغة:</label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-slate-300 block">
+                  اختر الجودة المطلوبة (من 720p وحتى 8K حسب دقة الفيديو الأصلية):
+                </label>
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => { setAudioOnly(false); setSelectedQuality('best'); }}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                     !audioOnly && selectedQuality === 'best'
-                      ? 'bg-rose-600 text-white border-rose-500'
+                      ? 'bg-rose-600 text-white border-rose-500 shadow-md'
                       : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
-                  أعلى جودة متاحة (Best)
+                  أعلى جودة متاحة تلقائياً ({videoInfo.maxQuality})
                 </button>
 
                 {videoInfo.formats.map((fmt) => (
@@ -320,11 +351,11 @@ export default function VideoDownloaderPage() {
                     onClick={() => { setAudioOnly(false); setSelectedQuality(fmt.height.toString()); }}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                       !audioOnly && selectedQuality === fmt.height.toString()
-                        ? 'bg-rose-600 text-white border-rose-500'
+                        ? 'bg-rose-600 text-white border-rose-500 shadow-md'
                         : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
                     }`}
                   >
-                    {fmt.label}
+                    <span>{fmt.label}</span>
                   </button>
                 ))}
 
@@ -332,22 +363,22 @@ export default function VideoDownloaderPage() {
                   onClick={() => setAudioOnly(true)}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
                     audioOnly
-                      ? 'bg-indigo-600 text-white border-indigo-500'
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
                       : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
                   }`}
                 >
                   <Music className="w-3.5 h-3.5" />
-                  <span>صوت فقط MP3</span>
+                  <span>استخراج صوت فقط MP3</span>
                 </button>
               </div>
             </div>
 
-            {/* Trimming & Clipping Section */}
+            {/* Trimming & Cutting Section */}
             <div className="space-y-3 pt-4 border-t border-slate-800/80">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Scissors className="w-4 h-4 text-cyan-400" />
-                  <span className="text-xs font-bold text-white">اقتطاع جزء محدد فقط من الفيديو (Clip Trim)</span>
+                  <span className="text-xs font-bold text-white">تنزيل جزء معين فقط من الفيديو (اقتطاع زمني)</span>
                 </div>
                 <input
                   type="checkbox"
@@ -363,75 +394,77 @@ export default function VideoDownloaderPage() {
                     <label className="text-[11px] text-slate-400 block mb-1">وقت البدء (HH:MM:SS أو بالثواني):</label>
                     <input
                       type="text"
-                      placeholder="00:01:30"
+                      placeholder="00:00:15"
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                      dir="ltr"
                     />
                   </div>
                   <div>
                     <label className="text-[11px] text-slate-400 block mb-1">وقت الانتهاء (HH:MM:SS أو بالثواني):</label>
                     <input
                       type="text"
-                      placeholder="00:02:45"
+                      placeholder="00:01:45"
                       value={endTime}
                       onChange={(e) => setEndTime(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-rose-500 font-mono"
+                      dir="ltr"
                     />
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Execute Download Button */}
-            {!downloadReady ? (
-              <button
-                onClick={handleStartDownload}
-                disabled={isDownloading}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
-              >
-                {isDownloading ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>{downloadStatusText} ({downloadProgress.toFixed(0)}%)</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>تحميل الفيديو الآن على السيرفر</span>
-                  </>
-                )}
-              </button>
-            ) : (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-3">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>اكتملت معالجة الفيديو بنجاح! ({downloadFileName})</span>
-                </div>
-                <a
-                  href={`/api/downloader/file/${taskId}`}
-                  download={downloadFileName}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-lg shadow-emerald-600/25"
-                >
+            {/* Start Download Action */}
+            <button
+              onClick={handleStartDownload}
+              disabled={isDownloading}
+              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 text-sm transition-all disabled:opacity-50"
+            >
+              {isDownloading ? (
+                <>
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>{downloadStatusText} ({downloadProgress.toFixed(0)}%)</span>
+                </>
+              ) : (
+                <>
                   <Download className="w-4 h-4" />
-                  <span>حفظ الملف على جهازك الآن</span>
-                </a>
-              </div>
-            )}
+                  <span>تنزيل الفيديو مباشرة إلى جهازك</span>
+                </>
+              )}
+            </button>
 
-            {/* Download Progress Bar */}
+            {/* Progress and status message */}
             {isDownloading && (
-              <div className="space-y-1.5">
-                <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div className="space-y-1.5 pt-2">
+                <div className="w-full bg-slate-800 rounded-full h-2.5 overflow-hidden">
                   <div
-                    className="bg-emerald-500 h-2 transition-all duration-300"
+                    className="bg-emerald-500 h-2.5 transition-all duration-300 rounded-full"
                     style={{ width: `${downloadProgress}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                <div className="flex justify-between text-[11px] text-slate-400 font-mono">
                   <span>{downloadStatusText}</span>
                   <span>{downloadProgress.toFixed(0)}%</span>
                 </div>
+              </div>
+            )}
+
+            {/* Success Card with Direct Manual Download Button if browser popup blocked */}
+            {downloadReady && (
+              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-3 animate-fade-in">
+                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>تم بدء تنزيل الملف لجهازك تلقائياً! ({downloadFileName})</span>
+                </div>
+                <button
+                  onClick={() => triggerBrowserFileDownload(taskId!, downloadFileName)}
+                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>اضغط هنا إذا لم يبدأ التنزيل تلقائياً على جهازك</span>
+                </button>
               </div>
             )}
           </div>
