@@ -113,3 +113,15 @@ model Recording {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
+
+model CustomTool {
+  id          String   @id @default(cuid())
+  name        String
+  url         String
+  icon        String?  @default("Globe")
+  description String?
+  category    String?  @default("custom")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
