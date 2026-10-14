@@ -19,6 +19,9 @@ export function middleware(request: NextRequest) {
   const isLoginPage = pathname === '/login';
   const isAuthLoginApi = pathname === '/api/auth/login';
   const isWebhookApi = pathname.startsWith('/api/webhooks');
+  const isDownloaderStreamApi =
+    pathname.startsWith('/api/downloader/proxy') ||
+    pathname.startsWith('/api/downloader/file');
 
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   const isAuthenticated = Boolean(token && token.includes('.'));
@@ -29,7 +32,7 @@ export function middleware(request: NextRequest) {
   }
 
   // If request is public, proceed
-  if (isLoginPage || isAuthLoginApi || isWebhookApi) {
+  if (isLoginPage || isAuthLoginApi || isWebhookApi || isDownloaderStreamApi) {
     return NextResponse.next();
   }
 

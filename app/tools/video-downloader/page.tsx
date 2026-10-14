@@ -581,24 +581,14 @@ export default function VideoDownloaderPage() {
                 </div>
 
                 {/* Download Actions */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                <div className="pt-1">
                   <button
                     onClick={() => triggerBrowserFileDownload(taskId, downloadFileName, directDownloadUrl || proxyDownloadUrl)}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-lg shadow-emerald-600/30"
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm transition-all shadow-lg shadow-emerald-600/30"
                   >
-                    <Download className="w-4 h-4" />
-                    <span>تحميل مباشر فائق السرعة (Cloud CDN)</span>
+                    <Download className="w-5 h-5 animate-bounce" />
+                    <span>تنزيل الفيديو إلى جهازك الآن (حفظ فوري)</span>
                   </button>
-
-                  {proxyDownloadUrl && (
-                    <button
-                      onClick={() => triggerBrowserFileDownload(taskId, downloadFileName, proxyDownloadUrl)}
-                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-all border border-slate-700 hover:border-slate-600"
-                    >
-                      <Zap className="w-4 h-4 text-amber-400" />
-                      <span>تحميل بديل عبر سيرفر الشركة</span>
-                    </button>
-                  )}
                 </div>
 
                 <p className="text-[11px] text-slate-400 text-center leading-relaxed">

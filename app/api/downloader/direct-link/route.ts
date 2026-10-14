@@ -26,10 +26,12 @@ export async function POST(req: NextRequest) {
       if (directUrl) {
         const safe = (title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
         const fName = `${safe || 'video'}.${ext}`;
+        const proxy = makeProxyUrl(directUrl, safe);
         return NextResponse.json({
           success: true,
-          downloadUrl: directUrl,
-          proxyUrl: makeProxyUrl(directUrl, safe),
+          downloadUrl: proxy, // Always stream through server proxy to prevent 403 IP-lock
+          proxyUrl: proxy,
+          cdnUrl: directUrl,
           fileName: fName,
           direct: true,
           title: safe,
@@ -57,10 +59,12 @@ export async function POST(req: NextRequest) {
             if (directUrl) {
               const safe = (cloud.title || title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
               const fName = `${safe || 'video'}.${ext}`;
+              const proxy = makeProxyUrl(directUrl, safe);
               return NextResponse.json({
                 success: true,
-                downloadUrl: directUrl,
-                proxyUrl: makeProxyUrl(directUrl, safe),
+                downloadUrl: proxy, // Always stream through server proxy to prevent 403 IP-lock
+                proxyUrl: proxy,
+                cdnUrl: directUrl,
                 fileName: fName,
                 direct: true,
                 title: cloud.title,

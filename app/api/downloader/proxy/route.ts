@@ -1,6 +1,4 @@
 import { type NextRequest } from 'next/server';
-import { PassThrough } from 'stream';
-import { Readable } from 'stream';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,24 +12,31 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const isVidssave = targetUrl.includes('vidssave.com');
+    const reqHeaders: Record<string, string> = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    };
+
+    if (isVidssave) {
+      reqHeaders['Referer'] = 'https://ar.vidssave.com/';
+      reqHeaders['Origin'] = 'https://ar.vidssave.com';
+    }
+
     const upstream = await fetch(targetUrl, {
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        Referer: 'https://ar.vidssave.com/',
-        Origin: 'https://ar.vidssave.com',
-      },
+      headers: reqHeaders,
     });
 
     if (!upstream.ok) {
+      console.error('[proxy] Upstream returned error:', upstream.status, targetUrl);
       return new Response(
-        `Failed to fetch media from CDN: HTTP ${upstream.status}`,
+        `Failed to fetch media: HTTP ${upstream.status}`,
         { status: upstream.status }
       );
     }
 
     if (!upstream.body) {
-      return new Response('Empty response from CDN', { status: 502 });
+      return new Response('Empty response from media server', { status: 502 });
     }
 
     const encodedName = encodeURIComponent(fileName);
@@ -49,7 +54,7 @@ export async function GET(req: NextRequest) {
       responseHeaders['Content-Length'] = contentLength;
     }
 
-    // Stream the response body directly
+    // Stream the media directly to the user's browser
     return new Response(upstream.body, {
       status: 200,
       headers: responseHeaders,
