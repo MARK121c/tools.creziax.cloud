@@ -1,11 +1,10 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import { Sidebar } from '@/components/Sidebar';
-import { Navbar } from '@/components/Navbar';
+import { AppShell } from '@/components/AppShell';
 
 export const metadata: Metadata = {
-  title: 'Apex AI Sales & CRM | نظام المبيعات والتسويق الذاتي',
-  description: 'نظام متكامل ومجاني للتنقيب عن العملاء عبر يوتيوب، صياغة العروض بالذكاء الاصطناعي، وإرسال الإيميلات الآلية',
+  title: 'Creziax Tools Suite | منظومة الأدوات والـ CRM المتكاملة',
+  description: 'منظومة سحابية متكاملة للمبيعات والـ CRM، تسجيل الاجتماعات والشاشة، وتحميل الوسائط الرقمية',
 };
 
 export default function RootLayout({
@@ -15,17 +14,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className="antialiased min-h-screen flex bg-slate-950 text-slate-100 selection:bg-blue-600 selection:text-white">
-        {/* Sidebar Navigation */}
-        <Sidebar />
-
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-screen overflow-x-hidden">
-          <Navbar />
-          <main className="flex-1 p-4 md:p-8 max-w-7xl w-full mx-auto">
-            {children}
-          </main>
-        </div>
+      <body className="antialiased min-h-screen bg-slate-950 text-slate-100 selection:bg-indigo-600 selection:text-white">
+        <AppShell>{children}</AppShell>
       </body>
     </html>
   );

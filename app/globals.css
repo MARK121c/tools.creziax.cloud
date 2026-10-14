@@ -1,43 +1,50 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --background: #080c14;
+  --background: #080b11;
   --foreground: #f8fafc;
-  --card-bg: #0f172a;
+  --card-bg: #0d1322;
   --card-border: #1e293b;
-  --primary: #3b82f6;
-  --primary-hover: #2563eb;
+  --primary: #4f46e5;
+  --primary-hover: #4338ca;
   --accent: #10b981;
 }
 
 body {
-  color: var(--foreground);
-  background: radial-gradient(circle at 50% 0%, #172554 0%, #090d16 60%, #050811 100%);
+  color: #f1f5f9;
+  background-color: #070a10;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(30, 41, 59, 0.25) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(49, 46, 129, 0.15) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(15, 23, 42, 0.3) 0px, transparent 50%);
   min-height: 100vh;
   font-family: 'Cairo', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   direction: rtl;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Glassmorphic card styling */
+/* Glassmorphic card styling with crisp borders */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(13, 19, 34, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 16px;
 }
 
 .glass-panel-hover {
-  transition: all 0.2s ease-in-out;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-panel-hover:hover {
-  border-color: rgba(59, 130, 246, 0.3);
+  border-color: rgba(99, 102, 241, 0.35);
   transform: translateY(-2px);
-  box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 16px 36px -12px rgba(0, 0, 0, 0.65);
 }
 
 /* Custom modern scrollbar */
@@ -47,19 +54,19 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0b0f19;
+  background: #080b11;
 }
 
 ::-webkit-scrollbar-thumb {
   background: #1e293b;
-  border-radius: 4px;
+  border-radius: 6px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: #334155;
 }
 
-/* RTL Input Fixes */
+/* RTL Input & Typography Fixes */
 input, textarea, select {
   direction: rtl;
 }
@@ -70,5 +77,5 @@ input[type="email"], input[type="url"], input[type="password"] {
 }
 
 .badge-glow {
-  box-shadow: 0 0 15px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
 }
