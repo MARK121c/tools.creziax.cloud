@@ -60,6 +60,7 @@ export default function VideoDownloaderPage() {
   const [downloadReady, setDownloadReady] = useState(false);
   const [downloadFileName, setDownloadFileName] = useState('');
   const [directDownloadUrl, setDirectDownloadUrl] = useState<string | null>(null);
+  const [proxyDownloadUrl, setProxyDownloadUrl] = useState<string | null>(null);
 
   const platformTabs = [
     { id: 'auto', label: 'كشف تلقائي', icon: Zap },
@@ -121,22 +122,29 @@ export default function VideoDownloaderPage() {
   const triggerBrowserFileDownload = (id?: string | null, fileName?: string, directUrl?: string | null) => {
     const finalUrl = directUrl || (id ? `/api/downloader/file/${id}` : null);
     if (!finalUrl) return;
+
+    // Create invisible anchor without target="_blank" so modern browsers download to Downloads folder
     const a = document.createElement('a');
     a.href = finalUrl;
     a.download = fileName || 'video.mp4';
-    a.target = '_blank';
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    setTimeout(() => {
+      try {
+        document.body.removeChild(a);
+      } catch {}
+    }, 1500);
   };
 
   const handleStartDownload = async () => {
     if (!url) return;
     setIsDownloading(true);
-    setDownloadProgress(20);
-    setDownloadStatusText('جاري تجهيز التحميل المباشر...');
+    setDownloadProgress(15);
+    setDownloadStatusText('جاري فحص مسارات الفيديو وفك التشفير السحابي...');
     setDownloadReady(false);
     setDirectDownloadUrl(null);
+    setProxyDownloadUrl(null);
     setErrorMsg(null);
 
     const chosenFormat = videoInfo?.formats?.find(
@@ -148,11 +156,20 @@ export default function VideoDownloaderPage() {
     const finalFileName = `${safeTitle || 'video'}.${targetExt}`;
     setDownloadFileName(finalFileName);
 
+    // Realistic progress animation so the user always sees live progress
+    const progressTimer = setInterval(() => {
+      setDownloadProgress((prev) => {
+        if (prev < 40) return prev + 8;
+        if (prev < 75) return prev + 4;
+        if (prev < 90) return prev + 1;
+        return prev;
+      });
+    }, 250);
+
     // 1. Instant Direct Download (takes 1-2 seconds, starts download in browser immediately)
     if (!isTrimming) {
       try {
-        setDownloadProgress(50);
-        setDownloadStatusText('جاري استخراج الرابط المباشر الفوري...');
+        setDownloadStatusText('جاري استخراج رابط التحميل الفوري فائق السرعة...');
 
         const resDirect = await fetch('/api/downloader/direct-link', {
           method: 'POST',
@@ -167,25 +184,35 @@ export default function VideoDownloaderPage() {
         });
 
         const dataDirect = await resDirect.json();
-        if (dataDirect.success && dataDirect.downloadUrl) {
-          setDirectDownloadUrl(dataDirect.downloadUrl);
+        clearInterval(progressTimer);
+
+        if (dataDirect.success && (dataDirect.downloadUrl || dataDirect.proxyUrl)) {
+          const effectiveUrl = dataDirect.downloadUrl || dataDirect.proxyUrl;
+          const targetName = dataDirect.fileName || finalFileName;
+
+          setDirectDownloadUrl(dataDirect.downloadUrl || null);
+          setProxyDownloadUrl(dataDirect.proxyUrl || null);
+          setDownloadFileName(targetName);
           setDownloadProgress(100);
-          setDownloadStatusText('تم بدء التنزيل مباشرة لجهازك!');
+          setDownloadStatusText('تم تجهيز الفيديو بنجاح! يبدأ التنزيل لجهازك الآن...');
           setIsDownloading(false);
           setDownloadReady(true);
 
-          triggerBrowserFileDownload(null, finalFileName, dataDirect.downloadUrl);
+          triggerBrowserFileDownload(null, targetName, effectiveUrl);
           return;
         }
       } catch (directErr) {
+        clearInterval(progressTimer);
         console.warn('Instant direct link failed, falling back to background worker:', directErr);
       }
     }
 
+    clearInterval(progressTimer);
+
     // 2. Fallback to background worker (e.g. when clip trimming is requested)
     try {
-      setDownloadProgress(60);
-      setDownloadStatusText('جاري المعالجة...');
+      setDownloadProgress(35);
+      setDownloadStatusText('جاري المعالجة والتحميل عبر السيرفر الداخلي...');
 
       const res = await fetch('/api/downloader/download', {
         method: 'POST',
@@ -531,18 +558,52 @@ export default function VideoDownloaderPage() {
 
             {/* Success Card with Direct Manual Download Button if browser popup blocked */}
             {downloadReady && (
-              <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl space-y-3 animate-fade-in">
-                <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>تم بدء تنزيل الملف لجهازك تلقائياً! ({downloadFileName})</span>
+              <div className="p-5 bg-gradient-to-b from-emerald-950/40 to-slate-900 border border-emerald-500/30 rounded-2xl space-y-4 animate-fade-in shadow-xl">
+                <div className="flex items-center gap-3 text-emerald-400">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-white">تم تجهيز الفيديو بنجاح وجاهز للتحميل!</h4>
+                    <p className="text-xs text-slate-300 font-mono mt-0.5 truncate max-w-md">{downloadFileName}</p>
+                  </div>
                 </div>
-                <button
-                  onClick={() => triggerBrowserFileDownload(taskId, downloadFileName, directDownloadUrl)}
-                  className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md"
-                >
-                  <Download className="w-4 h-4" />
-                  <span>اضغط هنا إذا لم يبدأ التنزيل تلقائياً على جهازك</span>
-                </button>
+
+                {/* Progress bar stuck at 100% */}
+                <div className="space-y-1">
+                  <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+                    <div className="bg-emerald-400 h-2 rounded-full w-full shadow-lg shadow-emerald-500/50" />
+                  </div>
+                  <div className="flex justify-between text-[11px] text-emerald-400 font-mono">
+                    <span>اكتمل التجهيز 100%</span>
+                    <span>جاهز للحفظ على جهازك</span>
+                  </div>
+                </div>
+
+                {/* Download Actions */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    onClick={() => triggerBrowserFileDownload(taskId, downloadFileName, directDownloadUrl || proxyDownloadUrl)}
+                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-lg shadow-emerald-600/30"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>تحميل مباشر فائق السرعة (Cloud CDN)</span>
+                  </button>
+
+                  {proxyDownloadUrl && (
+                    <button
+                      onClick={() => triggerBrowserFileDownload(taskId, downloadFileName, proxyDownloadUrl)}
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 text-xs transition-all border border-slate-700 hover:border-slate-600"
+                    >
+                      <Zap className="w-4 h-4 text-amber-400" />
+                      <span>تحميل بديل عبر سيرفر الشركة</span>
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-[11px] text-slate-400 text-center leading-relaxed">
+                  💡 يبدأ التحميل في جهازك تلقائياً داخل مجلد التنزيلات (Downloads). إذا حجب المتصفح التنزيل التلقائي، اضغط على زر التحميل الأخضر أعلاه.
+                </p>
               </div>
             )}
           </div>

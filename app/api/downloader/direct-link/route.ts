@@ -24,10 +24,15 @@ export async function POST(req: NextRequest) {
     if (resourceContent) {
       const directUrl = await getCloudDirectDownloadLink(resourceContent);
       if (directUrl) {
+        const safe = (title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
+        const fName = `${safe || 'video'}.${ext}`;
         return NextResponse.json({
           success: true,
-          downloadUrl: makeProxyUrl(directUrl),
+          downloadUrl: directUrl,
+          proxyUrl: makeProxyUrl(directUrl, safe),
+          fileName: fName,
           direct: true,
+          title: safe,
         });
       }
     }
@@ -50,9 +55,13 @@ export async function POST(req: NextRequest) {
           if (target && target.resource_content) {
             const directUrl = await getCloudDirectDownloadLink(target.resource_content);
             if (directUrl) {
+              const safe = (cloud.title || title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
+              const fName = `${safe || 'video'}.${ext}`;
               return NextResponse.json({
                 success: true,
-                downloadUrl: makeProxyUrl(directUrl, cloud.title),
+                downloadUrl: directUrl,
+                proxyUrl: makeProxyUrl(directUrl, safe),
+                fileName: fName,
                 direct: true,
                 title: cloud.title,
               });

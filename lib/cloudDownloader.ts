@@ -1,4 +1,47 @@
 import crypto from 'crypto';
+import https from 'https';
+import http from 'http';
+import { URL } from 'url';
+
+/**
+ * Follows 302/301 redirects using native Node https to extract true CDN direct link
+ */
+function resolve302Redirect(redirectUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    try {
+      const parsed = new URL(redirectUrl);
+      const client = parsed.protocol === 'http:' ? http : https;
+      const req = client.get(
+        redirectUrl,
+        {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            Referer: 'https://ar.vidssave.com/',
+            Origin: 'https://ar.vidssave.com',
+          },
+        },
+        (res) => {
+          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            return resolve(res.headers.location);
+          }
+          resolve(redirectUrl);
+        }
+      );
+      req.on('error', (e) => {
+        console.warn('resolve302Redirect error:', e.message);
+        resolve(redirectUrl);
+      });
+      req.setTimeout(8000, () => {
+        req.destroy();
+        resolve(redirectUrl);
+      });
+    } catch (e: any) {
+      console.warn('resolve302Redirect parse error:', e.message);
+      resolve(redirectUrl);
+    }
+  });
+}
 
 export interface CloudResource {
   resource_id: string;
@@ -194,24 +237,12 @@ export async function getCloudDirectDownloadLink(resourceContent: string): Promi
             if (dataObj.status === 'success' && dataObj.download_link) {
               reader.cancel();
               let finalLink = dataObj.download_link;
-              try {
-                if (finalLink.includes('download_redirect')) {
-                  const redirCheck = await fetch(finalLink, {
-                    method: 'GET',
-                    redirect: 'manual',
-                    headers: {
-                      'User-Agent':
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                      Referer: 'https://ar.vidssave.com/',
-                    },
-                  });
-                  const loc = redirCheck.headers.get('location');
-                  if (loc) {
-                    finalLink = loc;
-                  }
+              if (finalLink.includes('download_redirect')) {
+                try {
+                  finalLink = await resolve302Redirect(finalLink);
+                } catch (e) {
+                  console.warn('Redirect resolve skipped:', e);
                 }
-              } catch (e) {
-                console.warn('Redirect resolve skipped:', e);
               }
               return finalLink;
             }
