@@ -59,6 +59,7 @@ export default function VideoDownloaderPage() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadReady, setDownloadReady] = useState(false);
   const [downloadFileName, setDownloadFileName] = useState('');
+  const [directDownloadUrl, setDirectDownloadUrl] = useState<string | null>(null);
 
   const platformTabs = [
     { id: 'auto', label: 'كشف تلقائي', icon: Zap },
@@ -117,11 +118,13 @@ export default function VideoDownloaderPage() {
   };
 
   // Direct download to user device immediately
-  const triggerBrowserFileDownload = (id: string, fileName: string) => {
-    const downloadUrl = `/api/downloader/file/${id}`;
+  const triggerBrowserFileDownload = (id?: string | null, fileName?: string, directUrl?: string | null) => {
+    const finalUrl = directUrl || (id ? `/api/downloader/file/${id}` : null);
+    if (!finalUrl) return;
     const a = document.createElement('a');
-    a.href = downloadUrl;
+    a.href = finalUrl;
     a.download = fileName || 'video.mp4';
+    a.target = '_blank';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -130,16 +133,59 @@ export default function VideoDownloaderPage() {
   const handleStartDownload = async () => {
     if (!url) return;
     setIsDownloading(true);
-    setDownloadProgress(0);
-    setDownloadStatusText('جاري الاتصال والبدء...');
+    setDownloadProgress(20);
+    setDownloadStatusText('جاري تجهيز التحميل المباشر...');
     setDownloadReady(false);
+    setDirectDownloadUrl(null);
     setErrorMsg(null);
 
     const chosenFormat = videoInfo?.formats?.find(
       (f) => f.height.toString() === selectedQuality || f.id === selectedQuality
     );
 
+    const safeTitle = (videoInfo?.title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
+    const targetExt = audioOnly ? 'mp3' : 'mp4';
+    const finalFileName = `${safeTitle || 'video'}.${targetExt}`;
+    setDownloadFileName(finalFileName);
+
+    // 1. Instant Direct Download (takes 1-2 seconds, starts download in browser immediately)
+    if (!isTrimming) {
+      try {
+        setDownloadProgress(50);
+        setDownloadStatusText('جاري استخراج الرابط المباشر الفوري...');
+
+        const resDirect = await fetch('/api/downloader/direct-link', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            quality: audioOnly ? 'audio' : selectedQuality,
+            resourceContent: chosenFormat?.resourceContent,
+            audioOnly,
+          }),
+        });
+
+        const dataDirect = await resDirect.json();
+        if (dataDirect.success && dataDirect.downloadUrl) {
+          setDirectDownloadUrl(dataDirect.downloadUrl);
+          setDownloadProgress(100);
+          setDownloadStatusText('تم بدء التنزيل مباشرة لجهازك!');
+          setIsDownloading(false);
+          setDownloadReady(true);
+
+          triggerBrowserFileDownload(null, finalFileName, dataDirect.downloadUrl);
+          return;
+        }
+      } catch (directErr) {
+        console.warn('Instant direct link failed, falling back to background worker:', directErr);
+      }
+    }
+
+    // 2. Fallback to background worker (e.g. when clip trimming is requested)
     try {
+      setDownloadProgress(60);
+      setDownloadStatusText('جاري المعالجة...');
+
       const res = await fetch('/api/downloader/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -490,7 +536,7 @@ export default function VideoDownloaderPage() {
                   <span>تم بدء تنزيل الملف لجهازك تلقائياً! ({downloadFileName})</span>
                 </div>
                 <button
-                  onClick={() => triggerBrowserFileDownload(taskId!, downloadFileName)}
+                  onClick={() => triggerBrowserFileDownload(taskId, downloadFileName, directDownloadUrl)}
                   className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3 rounded-xl flex items-center justify-center gap-2 text-xs transition-all shadow-md"
                 >
                   <Download className="w-4 h-4" />
