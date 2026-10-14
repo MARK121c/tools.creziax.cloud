@@ -162,6 +162,7 @@ export default function VideoDownloaderPage() {
             quality: audioOnly ? 'audio' : selectedQuality,
             resourceContent: chosenFormat?.resourceContent,
             audioOnly,
+            title: videoInfo?.title,
           }),
         });
 

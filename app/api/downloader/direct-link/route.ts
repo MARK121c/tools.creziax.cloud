@@ -7,11 +7,18 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const { url, resourceContent, quality, audioOnly } = await req.json();
+    const { url, resourceContent, quality, audioOnly, title } = await req.json();
 
     if (!url && !resourceContent) {
       return NextResponse.json({ success: false, error: 'الرابط مطلوب' }, { status: 400 });
     }
+
+    const ext = audioOnly ? 'mp3' : 'mp4';
+    const makeProxyUrl = (targetUrl: string, name?: string) => {
+      const safe = (name || title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
+      const fName = `${safe || 'video'}.${ext}`;
+      return `/api/downloader/proxy?url=${encodeURIComponent(targetUrl)}&name=${encodeURIComponent(fName)}`;
+    };
 
     // 1. If resourceContent is already provided from cloud parse
     if (resourceContent) {
@@ -19,7 +26,7 @@ export async function POST(req: NextRequest) {
       if (directUrl) {
         return NextResponse.json({
           success: true,
-          downloadUrl: directUrl,
+          downloadUrl: makeProxyUrl(directUrl),
           direct: true,
         });
       }
@@ -37,7 +44,6 @@ export async function POST(req: NextRequest) {
           });
 
           if (!target) {
-            // Find highest quality or first
             target = cloud.resources[0];
           }
 
@@ -46,7 +52,7 @@ export async function POST(req: NextRequest) {
             if (directUrl) {
               return NextResponse.json({
                 success: true,
-                downloadUrl: directUrl,
+                downloadUrl: makeProxyUrl(directUrl, cloud.title),
                 direct: true,
                 title: cloud.title,
               });
@@ -63,7 +69,7 @@ export async function POST(req: NextRequest) {
         if (directStreamUrl) {
           return NextResponse.json({
             success: true,
-            downloadUrl: directStreamUrl,
+            downloadUrl: makeProxyUrl(directStreamUrl),
             direct: true,
           });
         }

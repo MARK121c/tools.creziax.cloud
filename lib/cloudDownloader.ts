@@ -193,7 +193,27 @@ export async function getCloudDirectDownloadLink(resourceContent: string): Promi
             const dataObj = JSON.parse(raw);
             if (dataObj.status === 'success' && dataObj.download_link) {
               reader.cancel();
-              return dataObj.download_link;
+              let finalLink = dataObj.download_link;
+              try {
+                if (finalLink.includes('download_redirect')) {
+                  const redirCheck = await fetch(finalLink, {
+                    method: 'GET',
+                    redirect: 'manual',
+                    headers: {
+                      'User-Agent':
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                      Referer: 'https://ar.vidssave.com/',
+                    },
+                  });
+                  const loc = redirCheck.headers.get('location');
+                  if (loc) {
+                    finalLink = loc;
+                  }
+                }
+              } catch (e) {
+                console.warn('Redirect resolve skipped:', e);
+              }
+              return finalLink;
             }
           } catch {
             // ignore non-json SSE lines
