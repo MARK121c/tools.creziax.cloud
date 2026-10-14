@@ -23,6 +23,7 @@ interface FormatOption {
   ext: string;
   height: number;
   qualityBadge: string;
+  resourceContent?: string;
 }
 
 interface VideoMetadata {
@@ -134,6 +135,10 @@ export default function VideoDownloaderPage() {
     setDownloadReady(false);
     setErrorMsg(null);
 
+    const chosenFormat = videoInfo?.formats?.find(
+      (f) => f.height.toString() === selectedQuality || f.id === selectedQuality
+    );
+
     try {
       const res = await fetch('/api/downloader/download', {
         method: 'POST',
@@ -141,6 +146,7 @@ export default function VideoDownloaderPage() {
         body: JSON.stringify({
           url,
           quality: audioOnly ? 'audio' : selectedQuality,
+          resourceContent: chosenFormat?.resourceContent,
           audioOnly,
           startTime: isTrimming ? startTime : undefined,
           endTime: isTrimming ? endTime : undefined,

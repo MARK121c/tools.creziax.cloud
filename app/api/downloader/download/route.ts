@@ -4,12 +4,13 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { getYtDlpPath, TEMP_DIR, downloadTasks, getCommonArgs } from '@/lib/downloader';
+import { getCloudDirectDownloadLink } from '@/lib/cloudDownloader';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   try {
-    const { url, quality, startTime, endTime, audioOnly } = await req.json();
+    const { url, quality, resourceContent, startTime, endTime, audioOnly } = await req.json();
 
     if (!url) {
       return NextResponse.json({ success: false, error: 'الرجاء إدخال رابط الفيديو' }, { status: 400 });
@@ -21,15 +22,15 @@ export async function POST(req: NextRequest) {
 
     downloadTasks.set(taskId, {
       status: 'processing',
-      progress: 0,
+      progress: 10,
       message: 'جاري الاتصال بالخادم وتجهيز البث...',
       filePath: null,
       fileName: null,
       error: null,
     });
 
-    // Start background download with bypass args
-    runDownload(taskId, taskDir, { url, quality, startTime, endTime, audioOnly });
+    // Start background download
+    runDownload(taskId, taskDir, { url, quality, resourceContent, startTime, endTime, audioOnly });
 
     return NextResponse.json({ success: true, taskId });
   } catch (error: any) {
@@ -40,12 +41,72 @@ export async function POST(req: NextRequest) {
 async function runDownload(
   taskId: string,
   taskDir: string,
-  options: { url: string; quality?: string; startTime?: string; endTime?: string; audioOnly?: boolean }
+  options: { url: string; quality?: string; resourceContent?: string; startTime?: string; endTime?: string; audioOnly?: boolean }
 ) {
   const task = downloadTasks.get(taskId);
   if (!task) return;
 
   try {
+    // 1. Cloud Download Engine (bypasses bot verification like vidssave)
+    if (options.resourceContent) {
+      task.progress = 30;
+      task.message = 'جاري الاتصال بالسيرفر السحابي وتجهيز الرابط الفائق...';
+
+      const directLink = await getCloudDirectDownloadLink(options.resourceContent);
+      if (directLink) {
+        task.progress = 60;
+        task.message = 'جاري سحب الفيديو بأقصى سرعة...';
+
+        const fileRes = await fetch(directLink, { redirect: 'follow' });
+        if (fileRes.ok) {
+          const ext = options.audioOnly ? 'mp3' : 'mp4';
+          const finalFileName = `video_${Date.now()}.${ext}`;
+          const finalPath = path.join(taskDir, finalFileName);
+
+          const arrayBuffer = await fileRes.arrayBuffer();
+          fs.writeFileSync(finalPath, Buffer.from(arrayBuffer));
+
+          // If trimming is requested
+          if (options.startTime || options.endTime) {
+            task.progress = 85;
+            task.message = 'جاري اقتطاع المشهد المطلوب...';
+            const trimmedName = `clip_${finalFileName}`;
+            const trimmedPath = path.join(taskDir, trimmedName);
+
+            try {
+              await new Promise<void>((resTrim, rejTrim) => {
+                const trimArgs = ['-y', '-i', finalPath];
+                if (options.startTime) trimArgs.push('-ss', options.startTime);
+                if (options.endTime) trimArgs.push('-to', options.endTime);
+                trimArgs.push('-c', 'copy', trimmedPath);
+
+                const pTrim = spawn('ffmpeg', trimArgs);
+                pTrim.on('close', (c) => (c === 0 ? resTrim() : rejTrim(new Error('فشل اقتطاع الفيديو'))));
+                pTrim.on('error', rejTrim);
+              });
+
+              task.status = 'done';
+              task.progress = 100;
+              task.message = 'اكتمل التحميل والاقتطاع بنجاح! جاري التنزيل لجهازك...';
+              task.fileName = trimmedName;
+              task.filePath = trimmedPath;
+              return;
+            } catch {
+              // fallback to original untrimmed file
+            }
+          }
+
+          task.status = 'done';
+          task.progress = 100;
+          task.message = 'اكتمل التحميل بنجاح! جاري التنزيل لجهازك...';
+          task.fileName = finalFileName;
+          task.filePath = finalPath;
+          return;
+        }
+      }
+    }
+
+    // 2. Fallback to local yt-dlp (works for TikTok, etc.)
     const isAudio = options.audioOnly || options.quality === 'audio';
     const outputTemplate = path.join(taskDir, '%(title).120B.%(ext)s');
 

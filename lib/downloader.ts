@@ -2,6 +2,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { parseCloudMedia, getCloudDirectDownloadLink } from '@/lib/cloudDownloader';
 
 export interface FormatOption {
   id: string;
@@ -11,6 +12,7 @@ export interface FormatOption {
   qualityBadge: string;
   hasAudio: boolean;
   formatNote: string;
+  resourceContent?: string;
 }
 
 export interface VideoInfo {
@@ -131,9 +133,57 @@ export function getCommonArgs(url?: string): string[] {
 }
 
 export async function fetchVideoInfo(url: string, platformHint?: string): Promise<VideoInfo> {
+  const detected = detectPlatform(url);
+
+  // 1. Try Cloud Resolver first (bypasses YouTube/Facebook/Instagram bot blocks entirely like vidssave)
+  try {
+    const cloud = await parseCloudMedia(url);
+    if (cloud && cloud.resources && cloud.resources.length > 0) {
+      const formats: FormatOption[] = cloud.resources.map((r, idx) => {
+        const heightNum = parseInt(r.quality.replace(/[^\d]/g, ''), 10) || 720;
+        return {
+          id: r.resource_content || `cloud_${idx}`,
+          label: `${getQualityBadge(heightNum)} (${r.format.toLowerCase()})`,
+          ext: r.format.toLowerCase(),
+          height: heightNum,
+          qualityBadge: getQualityBadge(heightNum),
+          hasAudio: r.has_audio !== false,
+          formatNote: `${r.quality} HD`,
+          resourceContent: r.resource_content,
+        };
+      }).sort((a, b) => b.height - a.height);
+
+      // Deduplicate by height
+      const seen = new Set<number>();
+      const deduped: FormatOption[] = [];
+      for (const f of formats) {
+        if (!seen.has(f.height)) {
+          seen.add(f.height);
+          deduped.push(f);
+        }
+      }
+
+      const maxH = deduped.length > 0 ? deduped[0].height : 720;
+
+      return {
+        title: cloud.title || 'فيديو بدون عنوان',
+        thumbnail: cloud.thumbnail || '',
+        duration: cloud.duration || 0,
+        durationString: formatDuration(cloud.duration || 0),
+        channel: detected === 'youtube' ? 'YouTube' : detected === 'facebook' ? 'Facebook' : detected === 'instagram' ? 'Instagram' : 'Social Media',
+        description: '',
+        platform: detected,
+        maxQuality: getQualityBadge(maxH),
+        formats: deduped,
+      };
+    }
+  } catch (cloudErr) {
+    console.warn('Cloud resolver skipped, using yt-dlp fallback:', cloudErr);
+  }
+
+  // 2. Fallback to local yt-dlp (e.g. TikTok or custom URLs)
   return new Promise((resolve, reject) => {
     const ytDlp = getYtDlpPath();
-    const detected = detectPlatform(url);
 
     const args = [
       '--dump-json',
