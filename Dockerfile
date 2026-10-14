@@ -2,8 +2,9 @@
 # Node.js 20 Alpine with SQLite support
 
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat openssl ffmpeg python3 py3-pip && \
-    (pip install --no-cache-dir yt-dlp --break-system-packages || true)
+RUN apk add --no-cache libc6-compat openssl ffmpeg python3 py3-pip curl && \
+    pip install --no-cache-dir --upgrade --break-system-packages yt-dlp && \
+    yt-dlp --version
 WORKDIR /app
 
 # Dependencies Stage

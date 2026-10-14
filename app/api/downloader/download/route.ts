@@ -51,7 +51,7 @@ async function runDownload(
 
     const args: string[] = [
       '-o', outputTemplate,
-      ...getCommonArgs(),
+      ...getCommonArgs(options.url),
     ];
 
     if (isAudio) {

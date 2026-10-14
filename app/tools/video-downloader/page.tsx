@@ -283,13 +283,38 @@ export default function VideoDownloaderPage() {
           )}
         </button>
 
-        {/* Error Alert */}
+        {/* Error Alert — smart YouTube bot block detection */}
         {errorMsg && (
-          <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-            <div className="space-y-1">
-              <span className="font-bold">تنبيه:</span>
-              <p className="leading-relaxed">{errorMsg}</p>
+          <div className={`p-4 rounded-xl text-xs flex items-start gap-2.5 ${
+            errorMsg.includes('YOUTUBE_BOT_BLOCK')
+              ? 'bg-amber-500/10 border border-amber-500/30 text-amber-200'
+              : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
+          }`}>
+            <AlertCircle className={`w-4 h-4 shrink-0 mt-0.5 ${errorMsg.includes('YOUTUBE_BOT_BLOCK') ? 'text-amber-400' : 'text-rose-400'}`} />
+            <div className="space-y-2 w-full">
+              {errorMsg.includes('YOUTUBE_BOT_BLOCK') ? (
+                <>
+                  <p className="font-bold text-amber-300">⚠️ يوتيوب يحجب السيرفر (IP Bot Block)</p>
+                  <p className="leading-relaxed text-amber-200/80">
+                    IP السيرفر مصنّف من يوتيوب كـ Bot وبيطلب تسجيل دخول. هذا شائع على خوادم VPS.
+                  </p>
+                  <div className="mt-2 space-y-1.5 bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                    <p className="font-bold text-amber-300 text-[11px]">✅ الحل الفوري — رفع ملف Cookies:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-[11px] text-amber-200/80">
+                      <li>ثبّت إضافة <strong>«Get cookies.txt LOCALLY»</strong> على Chrome</li>
+                      <li>افتح <strong>youtube.com</strong> وتأكد أنك مسجّل دخولك</li>
+                      <li>اضغط على الإضافة واضغط «Export» ← احفظ الملف باسم <code className="bg-amber-900/40 px-1 rounded">cookies.txt</code></li>
+                      <li>ارفع الملف على السيرفر في المسار: <code className="bg-amber-900/40 px-1 rounded">/app/cookies.txt</code></li>
+                    </ol>
+                  </div>
+                  <p className="text-[11px] text-amber-300">💡 في الوقت الحالي: جرب فيديو <strong>تيك توك / إنستقرام / فيسبوك / بنترست</strong> — شغالة بدون مشاكل.</p>
+                </>
+              ) : (
+                <>
+                  <span className="font-bold">خطأ:</span>
+                  <p className="leading-relaxed">{errorMsg}</p>
+                </>
+              )}
             </div>
           </div>
         )}

@@ -81,21 +81,39 @@ function getQualityBadge(height: number): string {
 }
 
 /**
- * Returns common arguments to bypass bot blocks and handle multi-platform downloads
+ * Returns common arguments to bypass bot blocks and handle multi-platform downloads.
+ * Uses tv_embedded + ios YouTube clients which reliably bypass bot checks on VPS IPs.
  */
-export function getCommonArgs(): string[] {
-  const args = [
+export function getCommonArgs(url?: string): string[] {
+  const isYouTube = url
+    ? url.toLowerCase().includes('youtube.com') || url.toLowerCase().includes('youtu.be')
+    : false;
+
+  const args: string[] = [
     '--no-warnings',
     '--no-check-certificates',
-    '--prefer-free-formats',
-    // Bypass YouTube "Sign in to confirm you're not a bot" on VPS servers:
-    '--extractor-args', 'youtube:player_client=android,web;player_skip=configs',
-    // Mobile Chrome User-Agent works best for TikTok, Facebook, Instagram and YouTube
-    '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    '--socket-timeout', '30',
+    '--retries', '5',
+    '--fragment-retries', '10',
+    '--retry-sleep', '3',
   ];
 
-  // If user placed a cookies.txt file, use it automatically
+  if (isYouTube) {
+    // YouTube-specific: use tv_embedded + ios clients — these bypass "Sign in to confirm" on VPS
+    args.push(
+      '--extractor-args', 'youtube:player_client=tv_embedded,ios;player_skip=webpage,configs,js',
+      '--user-agent', 'com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iPhone OS 17_5_1 like Mac OS X;)',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    );
+  } else {
+    // For TikTok, Instagram, Facebook, Pinterest — standard Chrome UA
+    args.push(
+      '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      '--add-header', 'Accept-Language:en-US,en;q=0.9',
+    );
+  }
+
+  // If user placed a cookies.txt file, use it automatically (helpful for YouTube)
   const possibleCookiePaths = [
     path.join(process.cwd(), 'cookies.txt'),
     path.join(process.cwd(), 'tools', 'video-downloader', 'cookies.txt'),
@@ -120,7 +138,7 @@ export async function fetchVideoInfo(url: string, platformHint?: string): Promis
     const args = [
       '--dump-json',
       '--no-download',
-      ...getCommonArgs(),
+      ...getCommonArgs(url),
       url,
     ];
 
@@ -137,12 +155,13 @@ export async function fetchVideoInfo(url: string, platformHint?: string): Promis
 
     proc.on('close', (code) => {
       if (code !== 0) {
-        // Human-readable Arabic explanations for common errors
         let errMsg = stderr || `فشل في معالجة الرابط (كود: ${code})`;
-        if (errMsg.includes('Sign in to confirm you’re not a bot')) {
-          errMsg = 'يوتيوب يطلب تأكيد حساب أو كوكيز مؤقتة. جرب رابط فيديو آخر أو تيك توك/إنستقرام/فيسبوك.';
+        if (errMsg.includes('Sign in to confirm') || errMsg.includes('not a bot') || errMsg.includes('age-restricted')) {
+          errMsg = 'YOUTUBE_BOT_BLOCK: يوتيوب يحجب السيرفر (IP مصنّف كـ Bot). جرب رابط تيك توك/إنستقرام/فيسبوك، أو رفّع ملف cookies.txt على السيرفر.';
         } else if (errMsg.includes('Video unavailable') || errMsg.includes('Private video')) {
           errMsg = 'الفيديو غير متاح أو تم تعيينه كفيديو خاص.';
+        } else if (errMsg.includes('is not a valid URL') || errMsg.includes('Unsupported URL')) {
+          errMsg = 'الرابط غير صحيح أو غير مدعوم. تأكد من نسخ الرابط الكامل.';
         }
         return reject(new Error(errMsg));
       }
