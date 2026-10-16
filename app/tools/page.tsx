@@ -158,27 +158,6 @@ export default function ToolsHubPage() {
       techStack: ['Node.js API', 'yt-dlp', 'FFmpeg', 'Tailwind', 'Next.js'],
       status: 'active',
     },
-    {
-      id: 'server-meeting-recorder',
-      title: 'خادم تسجيل الاجتماعات السحابي (24/7 Linux Daemon)',
-      subtitle: 'Headless Meeting Recorder Daemon (Ubuntu/VPS)',
-      badge: 'خادم خلفي سحابي',
-      badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-      icon: Server,
-      iconBg: 'from-emerald-600 via-teal-600 to-cyan-600',
-      description:
-        'نظام خادم متكامل يعمل 24/7 على خوادم Ubuntu VPS بدون شاشة حقيقية (Headless)، يستقبل روابط Google Meet و Zoom و Teams عبر الـ API وينضم تلقائياً ويسجل الاجتماع بالصوت والصورة.',
-      features: [
-        'تشغيل 24/7 في الخلفية كخدمة Systemd أو حاوية Docker Compose',
-        'شاشة وهمية وصوت افتراضي عبر Xvfb و PulseAudio Null-Sink',
-        'بوت انضمام آلي ذكي (Playwright Chromium) يتجاوز الحوارات',
-        'واجهة FastAPI كاملة للتحكم والتسجيل وتنزيل الفيديوهات ومسح القديم',
-      ],
-      primaryLink: '/tools/server-meeting-recorder',
-      primaryLabel: 'عرض تفاصيل الخادم وأوامر النشر',
-      techStack: ['Python 3.11', 'FastAPI', 'Playwright', 'Xvfb', 'PulseAudio', 'Docker'],
-      status: 'active',
-    },
   ];
 
   return (

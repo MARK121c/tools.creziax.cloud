@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getSetting } from '@/lib/settings';
 import fs from 'fs';
 import path from 'path';
 
@@ -34,6 +35,16 @@ export async function POST(req: NextRequest) {
 
     fs.writeFileSync(filePath, buffer);
 
+    const driveBackupUrl = await getSetting('drive_backup_url', '');
+    const autoUpload = (await getSetting('drive_auto_upload', 'true')) === 'true';
+
+    const notesObj: any = {
+      driveUrl: driveBackupUrl || null,
+      uploadedToDrive: false,
+      autoUploadEnabled: autoUpload,
+      userNotes: notes,
+    };
+
     const recording = await (prisma as any).recording.create({
       data: {
         title,
@@ -43,7 +54,7 @@ export async function POST(req: NextRequest) {
         filePath,
         mimeType: file.type || `video/${extension}`,
         source: 'browser_capture',
-        notes,
+        notes: JSON.stringify(notesObj),
       },
     });
 

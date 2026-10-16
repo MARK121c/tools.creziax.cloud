@@ -51,9 +51,6 @@ export const Navbar: React.FC = () => {
   } else if (pathname.startsWith('/tools/video-downloader')) {
     toolTitle = 'محمل ومقتطع الفيديوهات';
     toolColor = 'text-rose-400 bg-rose-500/10 border-rose-500/20';
-  } else if (pathname.startsWith('/tools/server-meeting-recorder')) {
-    toolTitle = 'خادم التسجيل السحابي 24/7';
-    toolColor = 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
   } else if (pathname === '/tools') {
     toolTitle = 'بوابة الأدوات المركزية';
     toolColor = 'text-blue-400 bg-blue-500/10 border-blue-500/20';
@@ -184,15 +181,6 @@ export const Navbar: React.FC = () => {
             >
               <Download className="w-4 h-4 text-rose-400" />
               <span>محمل الفيديوهات</span>
-            </Link>
-
-            <Link
-              href="/tools/server-meeting-recorder"
-              onClick={() => setMobileMenuOpen(false)}
-              className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-white flex items-center gap-2"
-            >
-              <Server className="w-4 h-4 text-emerald-400" />
-              <span>خادم 24/7</span>
             </Link>
           </div>
 

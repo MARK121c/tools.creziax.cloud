@@ -158,15 +158,6 @@ export const Sidebar: React.FC = () => {
       color: 'text-rose-400',
       badge: 'Media',
     },
-    {
-      id: 'server-recorder',
-      name: 'خادم التسجيل السحابي 24/7',
-      subtitle: 'بوت لينكس المستقل لخوادم VPS',
-      href: '/tools/server-meeting-recorder',
-      icon: Server,
-      color: 'text-emerald-400',
-      badge: 'Daemon',
-    },
   ];
 
   const currentToolName = activeCustomTool
@@ -379,18 +370,6 @@ export const Sidebar: React.FC = () => {
             </div>
           )}
 
-          {/* 4. If Server Recorder is active */}
-          {activeToolKey === 'server-recorder' && (
-            <div className="space-y-1">
-              <Link
-                href="/tools/server-meeting-recorder"
-                className="flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-xs bg-emerald-600 text-white shadow-md shadow-emerald-600/30"
-              >
-                <Server className="w-4 h-4 text-white" />
-                <span>لوحة وأوامر الخادم 24/7</span>
-              </Link>
-            </div>
-          )}
 
           {/* 5. If Custom Tool is active */}
           {activeCustomTool && (
