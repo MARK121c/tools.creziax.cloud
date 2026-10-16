@@ -48,11 +48,12 @@ export default function WebMeetingRecorderPage() {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
-  const [audioSource, setAudioSource] = useState<'dual' | 'system' | 'mic'>('dual');
+  const [audioSource, setAudioSource] = useState<'all' | 'system' | 'mic'>('all');
 
   // Result states
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
+  const [currentServerId, setCurrentServerId] = useState<string | null>(null);
   const [recordingTitle, setRecordingTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
@@ -193,23 +194,27 @@ export default function WebMeetingRecorderPage() {
       setRecordedUrl(null);
       setUploadSuccess(false);
 
-      // 1. Get Screen Capture
+      // 1. Get Screen Capture with full audio support (System + Tab + Speakers)
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
           frameRate: { ideal: 30 },
         },
-        audio: audioSource === 'system' || audioSource === 'dual',
+        audio: audioSource !== 'mic', // captures system/tab audio
       });
 
       let finalAudioTracks: MediaStreamTrack[] = [];
 
-      // 2. Dual Audio Mixing
-      if (audioSource === 'dual') {
+      // 2. Audio Mixing (All sounds: System/Device + Microphone)
+      if (audioSource === 'all') {
         try {
           const micStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true },
+            audio: {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: true,
+            },
           });
 
           const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -217,13 +222,15 @@ export default function WebMeetingRecorderPage() {
           audioContextRef.current = audioCtx;
           const dest = audioCtx.createMediaStreamDestination();
 
+          // Connect system/device sound from screen share if available
           if (displayStream.getAudioTracks().length > 0) {
             const screenSource = audioCtx.createMediaStreamSource(new MediaStream([displayStream.getAudioTracks()[0]]));
             const screenGain = audioCtx.createGain();
-            screenGain.gain.value = 1.0;
+            screenGain.gain.value = 1.2; // slight boost for meeting participants
             screenSource.connect(screenGain).connect(dest);
           }
 
+          // Connect microphone
           if (micStream.getAudioTracks().length > 0) {
             const micSource = audioCtx.createMediaStreamSource(micStream);
             const micGain = audioCtx.createGain();
@@ -233,7 +240,7 @@ export default function WebMeetingRecorderPage() {
 
           finalAudioTracks = dest.stream.getAudioTracks();
         } catch (micErr) {
-          console.warn('Microphone access denied, using system audio only:', micErr);
+          console.warn('Microphone access denied or unavailable, using system audio:', micErr);
           finalAudioTracks = displayStream.getAudioTracks();
         }
       } else if (audioSource === 'mic') {
@@ -242,6 +249,7 @@ export default function WebMeetingRecorderPage() {
         });
         finalAudioTracks = micStream.getAudioTracks();
       } else {
+        // System audio only
         finalAudioTracks = displayStream.getAudioTracks();
       }
 
@@ -349,8 +357,9 @@ export default function WebMeetingRecorderPage() {
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.recording) {
         setUploadSuccess(true);
+        setCurrentServerId(data.recording.id);
         fetchRecordings();
 
         // If Drive auto-upload is on and link is present, sync and open drive
@@ -365,8 +374,14 @@ export default function WebMeetingRecorderPage() {
     }
   };
 
-  // Direct Browser Download (MP4 or MP3)
+  // Direct Download (Triggers true server conversion if uploaded, or clean client download)
   const handleClientDownload = (format: 'mp4' | 'mp3') => {
+    if (currentServerId) {
+      // Use high quality server ffmpeg conversion!
+      window.location.href = `/api/recordings/${currentServerId}/download?format=${format}`;
+      return;
+    }
+
     if (!recordedUrl || !recordedBlob) return;
     const a = document.createElement('a');
     a.href = recordedUrl;
@@ -400,8 +415,9 @@ export default function WebMeetingRecorderPage() {
       });
 
       const data = await res.json();
-      if (data.success) {
+      if (data.success && data.recording) {
         setUploadSuccess(true);
+        setCurrentServerId(data.recording.id);
         fetchRecordings();
 
         // If auto-upload to Drive is enabled and a Drive link is set, trigger sync automatically!
@@ -667,21 +683,41 @@ export default function WebMeetingRecorderPage() {
                 <button
                   type="button"
                   disabled={isRecording}
-                  onClick={() => setAudioSource('dual')}
+                  onClick={() => setAudioSource('all')}
                   className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
-                    audioSource === 'dual'
+                    audioSource === 'all'
                       ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Volume2 className="w-4 h-4" />
+                    <Volume2 className="w-4 h-4 text-cyan-400" />
                     <div>
-                      <div className="text-xs font-bold">صوت مدمج (الموصى به)</div>
-                      <div className="text-[10px] text-slate-400">صوت المشاركين + صوت الميكروفون معاً</div>
+                      <div className="text-xs font-bold">جميع أصوات الجهاز + المايك (شامل كل شيء)</div>
+                      <div className="text-[10px] text-slate-400">يلقط صوت المكالمة، اليوتيوب، الزوم، والسماعات + المايك</div>
                     </div>
                   </div>
-                  {audioSource === 'dual' && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
+                  {audioSource === 'all' && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isRecording}
+                  onClick={() => setAudioSource('system')}
+                  className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
+                    audioSource === 'system'
+                      ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Monitor className="w-4 h-4 text-indigo-400" />
+                    <div>
+                      <div className="text-xs font-bold">صوت الجهاز الداخلي فقط (بدون مايك)</div>
+                      <div className="text-[10px] text-slate-400">صوت المشاركين في المكالمة أو البرامج فقط</div>
+                    </div>
+                  </div>
+                  {audioSource === 'system' && <CheckCircle2 className="w-4 h-4 text-indigo-400" />}
                 </button>
 
                 <button
@@ -695,13 +731,13 @@ export default function WebMeetingRecorderPage() {
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <Mic className="w-4 h-4" />
+                    <Mic className="w-4 h-4 text-amber-400" />
                     <div>
                       <div className="text-xs font-bold">صوت الميكروفون فقط</div>
                       <div className="text-[10px] text-slate-400">صوتك الشخصي من المايك</div>
                     </div>
                   </div>
-                  {audioSource === 'mic' && <CheckCircle2 className="w-4 h-4 text-cyan-400" />}
+                  {audioSource === 'mic' && <CheckCircle2 className="w-4 h-4 text-amber-400" />}
                 </button>
               </div>
             </div>
@@ -792,13 +828,16 @@ export default function WebMeetingRecorderPage() {
                 <span>حفظ إعدادات Drive</span>
               </button>
 
-              <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                <p className="font-bold text-slate-300 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>حماية السيرفر وضمان عدم ضياع التسجيلات:</span>
+              <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                <p className="font-bold text-amber-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                  <span>طريقة عمل الرفع إلى Google Drive:</span>
                 </p>
                 <p className="leading-relaxed">
-                  الملفات لا تُحذف أبداً إلا بعد التأكد التام من رفعها للـ Drive. حتى عند عمل إعادة تشغيل (Restart) للسيرفر، تظل تسجيلاتك محفوظة بأمان.
+                  ضع رابط مجلد الـ Drive المشترك الخاص بك أعلاه. عند انتهاء الاجتماع والضغط على تنزيل MP4 أو MP3، يفتح النظام مجلد الـ Drive تلقائياً في نافذة جديدة لتقوم بإفلات الملف فيه فوراً وبكل سهولة.
+                </p>
+                <p className="leading-relaxed text-slate-500">
+                  حماية إضافية: لن يُمسح التسجيل من السيرفر حتى تتأكد من اكتمال وجوده على الدرايف بأمان.
                 </p>
               </div>
             </div>
