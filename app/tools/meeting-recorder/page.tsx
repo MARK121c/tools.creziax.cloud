@@ -49,6 +49,7 @@ export default function WebMeetingRecorderPage() {
   const [isPaused, setIsPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioSource, setAudioSource] = useState<'all' | 'system' | 'mic'>('all');
+  const [videoQuality, setVideoQuality] = useState<'1080p' | '720p' | '4k'>('1080p');
 
   // Result states
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
@@ -194,12 +195,19 @@ export default function WebMeetingRecorderPage() {
       setRecordedUrl(null);
       setUploadSuccess(false);
 
+      // Resolve quality settings
+      const qualityConfig = {
+        '720p': { width: 1280, height: 720, fps: 30, bps: 2500000 },
+        '1080p': { width: 1920, height: 1080, fps: 30, bps: 5000000 },
+        '4k': { width: 3840, height: 2160, fps: 30, bps: 12000000 },
+      }[videoQuality] || { width: 1920, height: 1080, fps: 30, bps: 5000000 };
+
       // 1. Get Screen Capture with full audio support (System + Tab + Speakers)
       const displayStream = await navigator.mediaDevices.getDisplayMedia({
         video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 },
+          width: { ideal: qualityConfig.width },
+          height: { ideal: qualityConfig.height },
+          frameRate: { ideal: qualityConfig.fps },
         },
         audio: audioSource !== 'mic', // captures system/tab audio
       });
@@ -280,7 +288,7 @@ export default function WebMeetingRecorderPage() {
 
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: selectedMime,
-        videoBitsPerSecond: 3500000,
+        videoBitsPerSecond: qualityConfig.bps,
       });
 
       mediaRecorder.ondataavailable = (e) => {
@@ -626,6 +634,23 @@ export default function WebMeetingRecorderPage() {
                     <span>تنزيل صوت MP3</span>
                   </button>
 
+                  {/* Direct Open / Upload to Google Drive */}
+                  {driveLink && driveLink.startsWith('http') && (
+                    <button
+                      onClick={() => {
+                        if (currentServerId) {
+                          handleSyncToDrive(currentServerId);
+                        } else {
+                          window.open(driveLink, '_blank', 'noopener,noreferrer');
+                        }
+                      }}
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-white px-3.5 py-2.5 rounded-xl text-xs font-bold border border-amber-500/30 transition-all shadow-md"
+                    >
+                      <FolderSync className="w-3.5 h-3.5 text-amber-400" />
+                      <span>فتح مجلد Drive للرفع</span>
+                    </button>
+                  )}
+
                   {/* Save to Server & Auto-sync to Drive */}
                   <button
                     onClick={handleSaveToServer}
@@ -738,6 +763,54 @@ export default function WebMeetingRecorderPage() {
                     </div>
                   </div>
                   {audioSource === 'mic' && <CheckCircle2 className="w-4 h-4 text-amber-400" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Video Resolution / Quality Selector */}
+            <div className="space-y-2 pt-1 border-t border-slate-800/80">
+              <label className="text-xs font-semibold text-slate-300 block">دقة وجودة تصوير الفيديو:</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  disabled={isRecording}
+                  onClick={() => setVideoQuality('720p')}
+                  className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
+                    videoQuality === '720p'
+                      ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-300 font-bold'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="text-xs">HD 720p</div>
+                  <div className="text-[9px] text-slate-500">حجم أصغر</div>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isRecording}
+                  onClick={() => setVideoQuality('1080p')}
+                  className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
+                    videoQuality === '1080p'
+                      ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-300 font-bold'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="text-xs">FHD 1080p</div>
+                  <div className="text-[9px] text-cyan-400">الموصى به</div>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isRecording}
+                  onClick={() => setVideoQuality('4k')}
+                  className={`py-2 px-2.5 rounded-xl border text-center transition-all ${
+                    videoQuality === '4k'
+                      ? 'bg-cyan-500/10 border-cyan-500/50 text-cyan-300 font-bold'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:bg-slate-800/50'
+                  }`}
+                >
+                  <div className="text-xs">4K Ultra</div>
+                  <div className="text-[9px] text-slate-500">أعلى دقة</div>
                 </button>
               </div>
             </div>
