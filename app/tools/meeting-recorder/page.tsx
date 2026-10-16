@@ -60,7 +60,7 @@ export default function WebMeetingRecorderPage() {
   // Google Drive Settings states
   const [driveLink, setDriveLink] = useState('');
   const [autoUploadToDrive, setAutoUploadToDrive] = useState(true);
-  const [deleteLocalAfterUpload, setDeleteLocalAfterUpload] = useState(true);
+  const [deleteLocalAfterUpload, setDeleteLocalAfterUpload] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsSavedSuccess, setSettingsSavedSuccess] = useState(false);
 
@@ -294,6 +294,9 @@ export default function WebMeetingRecorderPage() {
         if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
           audioContextRef.current.close().catch(() => {});
         }
+
+        // Auto save to server so it never disappears on refresh!
+        autoSaveRecording(completeBlob, autoTitle);
       };
 
       mediaRecorder.start(1000);
@@ -330,13 +333,48 @@ export default function WebMeetingRecorderPage() {
     setIsPaused(false);
   };
 
+  // Auto-save recording immediately when stopped so it persists on disk & DB
+  const autoSaveRecording = async (blob: Blob, title: string) => {
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+      formData.append('file', blob, `${title}.${ext}`);
+      formData.append('title', title);
+      formData.append('duration', recordingTime.toString());
+
+      const res = await fetch('/api/recordings/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setUploadSuccess(true);
+        fetchRecordings();
+
+        // If Drive auto-upload is on and link is present, sync and open drive
+        if (autoUploadToDrive && driveLink.trim() && data.recording?.id) {
+          handleSyncToDrive(data.recording.id);
+        }
+      }
+    } catch (err: any) {
+      console.error('Auto save error:', err);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   // Direct Browser Download (MP4 or MP3)
   const handleClientDownload = (format: 'mp4' | 'mp3') => {
     if (!recordedUrl || !recordedBlob) return;
     const a = document.createElement('a');
     a.href = recordedUrl;
     const cleanTitle = (recordingTitle || 'Meeting_Recording').replace(/[/\\?%*:|"<>]/g, '').trim();
-    a.download = `${cleanTitle}.${format}`;
+    // Use proper extension matching recorded blob
+    const isActuallyMp4 = recordedBlob.type.includes('mp4');
+    const finalExt = format === 'mp3' ? 'webm' : (isActuallyMp4 ? 'mp4' : 'webm');
+    a.download = `${cleanTitle}.${format === 'mp3' ? 'mp3' : finalExt}`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -371,16 +409,16 @@ export default function WebMeetingRecorderPage() {
           handleSyncToDrive(data.recording.id);
         }
       } else {
-        alert(data.error || 'فشل في رفع التسجيل إلى السيرفر');
+        alert(data.error || 'فشل في حفظ التسجيل إلى السيرفر');
       }
     } catch (err: any) {
-      alert('خطأ أثناء رفع التسجيل: ' + err.message);
+      alert('خطأ أثناء حفظ التسجيل: ' + err.message);
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Sync to Google Drive and safely free server storage
+  // Sync to Google Drive, open folder, and safely free server storage
   const handleSyncToDrive = async (id: string) => {
     setSyncingId(id);
     try {
@@ -388,6 +426,10 @@ export default function WebMeetingRecorderPage() {
       const data = await res.json();
       if (data.success) {
         fetchRecordings();
+        // If a Google Drive link is configured, open it in a new window/tab so user can confirm/upload
+        if (driveLink && driveLink.startsWith('http')) {
+          window.open(driveLink, '_blank', 'noopener,noreferrer');
+        }
       } else {
         alert(data.error || 'تعذرت المزامنة مع Google Drive');
       }
@@ -571,10 +613,10 @@ export default function WebMeetingRecorderPage() {
                   {/* Save to Server & Auto-sync to Drive */}
                   <button
                     onClick={handleSaveToServer}
-                    disabled={isUploading || uploadSuccess}
+                    disabled={isUploading}
                     className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all ${
                       uploadSuccess
-                        ? 'bg-emerald-600 text-white'
+                        ? 'bg-emerald-600/90 text-white'
                         : 'bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-cyan-600/25'
                     }`}
                   >
@@ -586,13 +628,11 @@ export default function WebMeetingRecorderPage() {
                       <UploadCloud className="w-4 h-4" />
                     )}
                     <span>
-                      {uploadSuccess
-                        ? autoUploadToDrive && driveLink
-                          ? 'تم الحفظ والرفع لـ Drive ☁️'
-                          : 'تم الحفظ بالسيرفر بنجاح'
-                        : isUploading
-                        ? 'جاري الرفع...'
-                        : 'حفظ وتخزين سحابي'}
+                      {isUploading
+                        ? 'جاري الحفظ بالسيرفر...'
+                        : uploadSuccess
+                        ? 'محفوظ بالسيرفر والأرشيف ✓'
+                        : 'حفظ بالسيرفر والأرشيف'}
                     </span>
                   </button>
                 </div>

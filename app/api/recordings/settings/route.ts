@@ -7,7 +7,7 @@ export async function GET() {
   try {
     const driveLink = await getSetting('drive_backup_url', '');
     const autoUpload = (await getSetting('drive_auto_upload', 'true')) === 'true';
-    const deleteAfterUpload = (await getSetting('drive_delete_local_after_upload', 'true')) === 'true';
+    const deleteAfterUpload = (await getSetting('drive_delete_local_after_upload', 'false')) === 'true';
     const retentionDays = await getSetting('drive_retention_days', '7');
 
     return NextResponse.json({

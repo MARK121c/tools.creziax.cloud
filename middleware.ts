@@ -21,7 +21,8 @@ export function middleware(request: NextRequest) {
   const isWebhookApi = pathname.startsWith('/api/webhooks');
   const isDownloaderStreamApi =
     pathname.startsWith('/api/downloader/proxy') ||
-    pathname.startsWith('/api/downloader/file');
+    pathname.startsWith('/api/downloader/file') ||
+    (pathname.startsWith('/api/recordings/') && pathname.includes('/download'));
 
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   const isAuthenticated = Boolean(token && token.includes('.'));

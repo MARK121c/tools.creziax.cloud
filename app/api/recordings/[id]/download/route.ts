@@ -82,8 +82,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         '-y',
         '-i', originalPath,
         '-vn',
-        '-acodec', 'libmp3lame',
-        '-q:a', '2',
+        '-c:a', 'libmp3lame',
+        '-b:a', '192k',
         cachedMp3Path,
       ]);
 
@@ -144,9 +144,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       '-y',
       '-i', originalPath,
       '-c:v', 'libx264',
-      '-preset', 'ultrafast',
+      '-pix_fmt', 'yuv420p',
+      '-preset', 'veryfast',
       '-crf', '23',
       '-c:a', 'aac',
+      '-b:a', '128k',
+      '-movflags', '+faststart',
       cachedMp4Path,
     ]);
 
