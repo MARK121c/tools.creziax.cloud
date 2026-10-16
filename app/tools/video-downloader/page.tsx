@@ -15,6 +15,7 @@ import {
   Zap,
   Film,
   Play,
+  Images,
 } from 'lucide-react';
 
 interface FormatOption {
@@ -36,6 +37,7 @@ interface VideoMetadata {
   platform: string;
   maxQuality: string;
   formats: FormatOption[];
+  images?: string[];
 }
 
 export default function VideoDownloaderPage() {
@@ -440,7 +442,7 @@ export default function VideoDownloaderPage() {
 
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => { setAudioOnly(false); setSelectedQuality('best'); }}
+                  onClick={() => { setAudioOnly(false); setSelectedQuality('best'); setDownloadReady(false); setDirectDownloadUrl(null); setProxyDownloadUrl(null); setErrorMsg(null); }}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                     !audioOnly && selectedQuality === 'best'
                       ? 'bg-rose-600 text-white border-rose-500 shadow-md'
@@ -453,7 +455,7 @@ export default function VideoDownloaderPage() {
                 {videoInfo.formats.map((fmt) => (
                   <button
                     key={fmt.id}
-                    onClick={() => { setAudioOnly(false); setSelectedQuality(fmt.height.toString()); }}
+                    onClick={() => { setAudioOnly(false); setSelectedQuality(fmt.height.toString()); setDownloadReady(false); setDirectDownloadUrl(null); setProxyDownloadUrl(null); setErrorMsg(null); }}
                     className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all ${
                       !audioOnly && selectedQuality === fmt.height.toString()
                         ? 'bg-rose-600 text-white border-rose-500 shadow-md'
@@ -465,7 +467,7 @@ export default function VideoDownloaderPage() {
                 ))}
 
                 <button
-                  onClick={() => setAudioOnly(true)}
+                  onClick={() => { setAudioOnly(true); setDownloadReady(false); setDirectDownloadUrl(null); setProxyDownloadUrl(null); setErrorMsg(null); }}
                   className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
                     audioOnly
                       ? 'bg-indigo-600 text-white border-indigo-500 shadow-md'
@@ -477,6 +479,58 @@ export default function VideoDownloaderPage() {
                 </button>
               </div>
             </div>
+
+            {/* Images / Carousel Section */}
+            {videoInfo.images && videoInfo.images.length > 0 && (
+              <div className="space-y-3 pt-4 border-t border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <Images className="w-4 h-4 text-pink-400" />
+                  <span className="text-xs font-bold text-white">
+                    صور المنشور ({videoInfo.images.length} صورة)
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {videoInfo.images.map((imgUrl, idx) => (
+                    <div key={idx} className="relative group rounded-xl overflow-hidden border border-slate-800 bg-slate-900">
+                      <img
+                        src={imgUrl}
+                        alt={`صورة ${idx + 1}`}
+                        className="w-full aspect-square object-cover"
+                        loading="lazy"
+                      />
+                      <a
+                        href={`/api/downloader/proxy?url=${encodeURIComponent(imgUrl)}&name=${encodeURIComponent(`${(videoInfo.title || 'image').replace(/[/\\?%*:|"<>]/g, '').slice(0, 60)}_${idx + 1}.jpg`)}`}
+                        download
+                        className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5"
+                      >
+                        <Download className="w-6 h-6 text-white" />
+                        <span className="text-[10px] text-white font-bold">تنزيل الصورة {idx + 1}</span>
+                      </a>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => {
+                    videoInfo.images!.forEach((imgUrl, idx) => {
+                      setTimeout(() => {
+                        const safeName = (videoInfo.title || 'image').replace(/[/\\?%*:|"<>]/g, '').slice(0, 60);
+                        const a = document.createElement('a');
+                        a.href = `/api/downloader/proxy?url=${encodeURIComponent(imgUrl)}&name=${encodeURIComponent(`${safeName}_${idx + 1}.jpg`)}`;
+                        a.download = `${safeName}_${idx + 1}.jpg`;
+                        a.style.display = 'none';
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => { try { document.body.removeChild(a); } catch {} }, 500);
+                      }, idx * 400);
+                    });
+                  }}
+                  className="w-full bg-pink-600 hover:bg-pink-500 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-pink-600/25 flex items-center justify-center gap-2 text-sm transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>تنزيل جميع الصور دفعة واحدة ({videoInfo.images.length} صورة)</span>
+                </button>
+              </div>
+            )}
 
             {/* Trimming & Cutting Section */}
             <div className="space-y-3 pt-4 border-t border-slate-800/80">
@@ -535,7 +589,7 @@ export default function VideoDownloaderPage() {
               ) : (
                 <>
                   <Download className="w-4 h-4" />
-                  <span>تنزيل الفيديو مباشرة إلى جهازك</span>
+                  <span>{audioOnly ? 'تنزيل الصوت (MP3) مباشرة إلى جهازك' : 'تنزيل الفيديو مباشرة إلى جهازك'}</span>
                 </>
               )}
             </button>
@@ -564,7 +618,9 @@ export default function VideoDownloaderPage() {
                     <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black text-white">تم تجهيز الفيديو بنجاح وجاهز للتحميل!</h4>
+                    <h4 className="text-sm font-black text-white">
+                      {audioOnly ? 'تم تجهيز الصوت بنجاح وجاهز للتحميل!' : 'تم تجهيز الفيديو بنجاح وجاهز للتحميل!'}
+                    </h4>
                     <p className="text-xs text-slate-300 font-mono mt-0.5 truncate max-w-md">{downloadFileName}</p>
                   </div>
                 </div>
@@ -587,7 +643,7 @@ export default function VideoDownloaderPage() {
                     className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-black py-3.5 px-4 rounded-xl flex items-center justify-center gap-2 text-sm transition-all shadow-lg shadow-emerald-600/30"
                   >
                     <Download className="w-5 h-5 animate-bounce" />
-                    <span>تنزيل الفيديو إلى جهازك الآن (حفظ فوري)</span>
+                    <span>{audioOnly ? 'تنزيل الصوت (MP3) إلى جهازك الآن (حفظ فوري)' : 'تنزيل الفيديو إلى جهازك الآن (حفظ فوري)'}</span>
                   </button>
                 </div>
 

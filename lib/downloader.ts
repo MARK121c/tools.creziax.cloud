@@ -25,6 +25,7 @@ export interface VideoInfo {
   platform: string;
   maxQuality: string;
   formats: FormatOption[];
+  images?: string[];
 }
 
 export interface TaskState {
@@ -153,13 +154,17 @@ export async function fetchVideoInfo(url: string, platformHint?: string): Promis
         };
       }).sort((a, b) => b.height - a.height);
 
-      // Deduplicate by height
-      const seen = new Set<number>();
+      // Deduplicate by height — prefer formats WITH audio over video-only
+      const seen = new Map<number, number>();
       const deduped: FormatOption[] = [];
       for (const f of formats) {
-        if (!seen.has(f.height)) {
-          seen.add(f.height);
+        const existingIdx = seen.get(f.height);
+        if (existingIdx === undefined) {
+          seen.set(f.height, deduped.length);
           deduped.push(f);
+        } else if (!deduped[existingIdx].hasAudio && f.hasAudio) {
+          // Replace video-only with version that has audio
+          deduped[existingIdx] = f;
         }
       }
 
@@ -175,6 +180,7 @@ export async function fetchVideoInfo(url: string, platformHint?: string): Promis
         platform: detected,
         maxQuality: getQualityBadge(maxH),
         formats: deduped,
+        images: cloud.images,
       };
     }
   } catch (cloudErr) {
@@ -253,6 +259,25 @@ export async function fetchVideoInfo(url: string, platformHint?: string): Promis
         const maxH = deduped.length > 0 ? deduped[0].height : 720;
         const maxBadge = getQualityBadge(maxH);
 
+        // Extract images for carousels or image posts
+        const extractedImages: string[] = [];
+        if (info.entries && Array.isArray(info.entries)) {
+          for (const entry of info.entries) {
+            if (entry.url && /\.(jpe?g|png|webp)/i.test(entry.url)) {
+              extractedImages.push(entry.url);
+            } else if (entry.thumbnail) {
+              extractedImages.push(entry.thumbnail);
+            }
+          }
+        }
+        if (extractedImages.length === 0 && (info.ext === 'jpg' || info.ext === 'jpeg' || info.ext === 'png' || info.ext === 'webp' || detected === 'pinterest')) {
+          if (info.url && /\.(jpe?g|png|webp)/i.test(info.url)) {
+            extractedImages.push(info.url);
+          } else if (info.thumbnail) {
+            extractedImages.push(info.thumbnail);
+          }
+        }
+
         resolve({
           title: info.title || 'فيديو بدون عنوان',
           thumbnail: info.thumbnail || '',
@@ -263,6 +288,7 @@ export async function fetchVideoInfo(url: string, platformHint?: string): Promis
           platform: detected,
           maxQuality: maxBadge,
           formats: deduped,
+          images: extractedImages.length > 0 ? extractedImages : undefined,
         });
       } catch (err: any) {
         reject(new Error(`فشل في استخراج تفاصيل الفيديو: ${err.message}`));

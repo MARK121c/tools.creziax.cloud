@@ -59,6 +59,7 @@ export interface CloudParseResult {
   thumbnail: string;
   duration: number;
   resources: CloudResource[];
+  images?: string[];
 }
 
 const AES_KEYS = [
@@ -145,11 +146,34 @@ export async function parseCloudMedia(url: string): Promise<CloudParseResult | n
 
     if (!parsedData || !parsedData.title) return null;
 
+    // Extract images from various possible field names (carousel / slideshow / images)
+    const images: string[] = [];
+    const imgSources = [parsedData.images, parsedData.slides, parsedData.photos, parsedData.carousel, parsedData.pictures];
+    for (const src of imgSources) {
+      if (Array.isArray(src)) {
+        for (const item of src) {
+          if (typeof item === 'string' && item.startsWith('http')) {
+            images.push(item);
+          } else if (item && typeof item === 'object') {
+            const imgUrl = item.url || item.src || item.image || item.thumbnail;
+            if (typeof imgUrl === 'string' && imgUrl.startsWith('http')) {
+              images.push(imgUrl);
+            }
+          }
+        }
+      }
+    }
+    // Also check for single image field
+    if (parsedData.image && typeof parsedData.image === 'string' && parsedData.image.startsWith('http') && !images.includes(parsedData.image)) {
+      images.push(parsedData.image);
+    }
+
     return {
       title: parsedData.title,
       thumbnail: parsedData.thumbnail || '',
       duration: parsedData.duration || 0,
       resources: parsedData.resources || [],
+      images: images.length > 0 ? images : undefined,
     };
   } catch (err) {
     console.warn('Cloud media parse failed:', err);

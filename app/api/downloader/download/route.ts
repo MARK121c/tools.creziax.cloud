@@ -48,7 +48,8 @@ async function runDownload(
 
   try {
     // 1. Cloud Download Engine (bypasses bot verification like vidssave)
-    if (options.resourceContent) {
+    //    ONLY for video — for audio, cloud resources are video files, need yt-dlp -x instead
+    if (options.resourceContent && !options.audioOnly) {
       task.progress = 30;
       task.message = 'جاري الاتصال بالسيرفر السحابي وتجهيز الرابط الفائق...';
 

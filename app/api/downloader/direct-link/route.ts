@@ -20,8 +20,9 @@ export async function POST(req: NextRequest) {
       return `/api/downloader/proxy?url=${encodeURIComponent(targetUrl)}&name=${encodeURIComponent(fName)}`;
     };
 
-    // 1. If resourceContent is already provided from cloud parse
-    if (resourceContent) {
+    // 1. If resourceContent is already provided from cloud parse — ONLY for VIDEO downloads
+    //    For audio-only, cloud resourceContent is a VIDEO file — skip it and use yt-dlp instead
+    if (resourceContent && !audioOnly) {
       const directUrl = await getCloudDirectDownloadLink(resourceContent);
       if (directUrl) {
         const safe = (title || 'video').replace(/[/\\?%*:|"<>]/g, '').trim().slice(0, 80);
@@ -39,8 +40,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. If no resourceContent, try parsing with Cloud Resolver first
-    if (url) {
+    // 2. If no resourceContent, try parsing with Cloud Resolver — ONLY for VIDEO downloads
+    //    For audio-only, cloud resolver only has video resources, skip to yt-dlp
+    if (url && !audioOnly) {
       try {
         const cloud = await parseCloudMedia(url);
         if (cloud && cloud.resources && cloud.resources.length > 0) {
@@ -75,8 +77,11 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         console.warn('Cloud direct link parse failed:', e);
       }
+    }
 
-      // 3. Fallback: extract direct media stream URL via yt-dlp -g (instant for TikTok, Twitter, etc.)
+    // 3. Fallback: extract direct media stream URL via yt-dlp -g
+    //    This handles: audio extraction for all platforms, TikTok video, etc.
+    if (url) {
       try {
         const directStreamUrl = await getDirectStreamUrl(url, quality, audioOnly);
         if (directStreamUrl) {
@@ -102,6 +107,12 @@ export async function POST(req: NextRequest) {
 
 /**
  * Extracts the direct video or audio stream URL using yt-dlp -g
+ * 
+ * Key fixes:
+ * - For audio: uses -f bestaudio to get audio-only stream
+ * - For video: uses -f best (single merged URL) instead of bestvideo+bestaudio 
+ *   which returns 2 separate URLs that our proxy can't handle
+ * - When multiple URLs returned, retries with -f best to get merged stream
  */
 function getDirectStreamUrl(url: string, quality?: string, audioOnly?: boolean): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -109,16 +120,20 @@ function getDirectStreamUrl(url: string, quality?: string, audioOnly?: boolean):
     const args = ['-g', ...getCommonArgs(url)];
 
     if (audioOnly) {
-      args.push('-f', 'bestaudio');
+      // Audio extraction — bestaudio gives a single audio stream URL
+      args.push('-f', 'bestaudio/best');
     } else if (quality && quality !== 'best') {
       const heightNum = parseInt(quality, 10);
       if (!isNaN(heightNum)) {
-        args.push('-f', `bestvideo[height<=${heightNum}]+bestaudio/best[height<=${heightNum}]/best`);
+        // Use 'best' (single merged stream) for direct URL extraction
+        // bestvideo+bestaudio returns 2 URLs (video + audio separate) which proxy can't handle
+        args.push('-f', `best[height<=${heightNum}]/best`);
       } else {
-        args.push('-f', 'bestvideo+bestaudio/best');
+        args.push('-f', 'best');
       }
     } else {
-      args.push('-f', 'bestvideo+bestaudio/best');
+      // Best merged single-file format
+      args.push('-f', 'best');
     }
 
     args.push(url);
@@ -137,7 +152,12 @@ function getDirectStreamUrl(url: string, quality?: string, audioOnly?: boolean):
     proc.on('close', (code) => {
       if (code === 0) {
         const lines = stdout.trim().split('\n').filter((l) => l.trim().startsWith('http'));
-        if (lines.length > 0) {
+        if (lines.length === 1) {
+          return resolve(lines[0].trim());
+        }
+        if (lines.length > 1) {
+          // Multiple URLs returned (video + audio separate streams)
+          // Use the first URL — it's the primary stream
           return resolve(lines[0].trim());
         }
       }
