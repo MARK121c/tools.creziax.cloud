@@ -86,6 +86,7 @@ export interface YouTubeScrapeResult {
   viewCount: string;
   description: string;
   email: string | null;
+  socialLinks?: string[];
   recentVideos: string[];
   isDuplicate?: boolean;
 }
