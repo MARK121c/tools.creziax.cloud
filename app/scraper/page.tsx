@@ -55,21 +55,23 @@ export default function ScraperPage() {
   const [newKeywordInput, setNewKeywordInput] = useState<string>('');
   const [showKeywordsHub, setShowKeywordsHub] = useState<boolean>(true);
 
-  // Load saved keywords from localStorage on mount
+  // Load saved keywords from localStorage on mount (merging newly added defaults)
   useEffect(() => {
+    const defaults = getAllDefaultKeywords();
     try {
       const stored = localStorage.getItem('crm_saved_keywords_pool');
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setSavedKeywords(parsed);
+          const merged = Array.from(new Set([...parsed, ...defaults]));
+          setSavedKeywords(merged);
           return;
         }
       }
     } catch {
       // fallback
     }
-    setSavedKeywords(getAllDefaultKeywords());
+    setSavedKeywords(defaults);
   }, []);
 
   // Delete keyword after scraping it
