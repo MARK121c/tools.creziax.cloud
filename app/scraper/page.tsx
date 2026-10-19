@@ -50,11 +50,22 @@ export default function ScraperPage() {
   const [minSubscribers, setMinSubscribers] = useState(1000);
   const [filterFaceless, setFilterFaceless] = useState(true);
   const [onlyArabic, setOnlyArabic] = useState(true);
+  const [strictNameOnly, setStrictNameOnly] = useState(false);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<YouTubeScrapeResult[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<string, boolean>>({});
   const [syncingNotion, setSyncingNotion] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Manual dismiss / remove channel from results list
+  const handleRemoveChannel = (channelId: string) => {
+    setResults((prev) => prev.filter((c) => c.channelId !== channelId));
+    setSelectedChannels((prev) => {
+      const updated = { ...prev };
+      delete updated[channelId];
+      return updated;
+    });
+  };
 
   // Dashboard stats
   const [totalNotionLeads, setTotalNotionLeads] = useState<number | null>(null);
@@ -157,7 +168,7 @@ export default function ScraperPage() {
     setSelectedChannels({});
     try {
       const res = await fetch(
-        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}`
+        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}&strictNameOnly=${strictNameOnly}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل البحث في يوتيوب');
@@ -634,7 +645,18 @@ export default function ScraperPage() {
                   className="rounded border-slate-700 text-red-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                 />
                 <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>صناع محتوى شخصيين فقط (استبعاد Faceless)</span>
+                <span>استبعاد الفيسلس (Faceless)</span>
+              </label>
+
+              {/* Strict Name Only Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-colors flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={strictNameOnly}
+                  onChange={(e) => setStrictNameOnly(e.target.checked)}
+                  className="rounded border-slate-700 text-purple-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span className="text-purple-400 font-bold">🎯 أسماء أشخاص حقيقية فقط</span>
               </label>
             </div>
           </div>
@@ -766,9 +788,19 @@ export default function ScraperPage() {
                       </div>
                     </div>
 
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      جاهز للإرسال 🚀
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        صانع محتوى 👤
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveChannel(channel.channelId)}
+                        className="text-slate-500 hover:text-rose-400 p-1 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                        title="استبعاد هذه القناة من القائمة"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Channel Metrics */}
