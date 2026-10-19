@@ -21,3 +21,6 @@ build/
 # IDE
 .vscode/
 .idea/
+
+# Scripts with secrets
+scraper.py
