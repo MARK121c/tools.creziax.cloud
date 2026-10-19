@@ -1,5 +1,3 @@
-import base64 from 'crypto';
-
 // Embedded default credentials with environment override
 const DEFAULT_NOTION_TOKEN = Buffer.from('bnRuXzM2MzQ3MDE1Nzc0OWlNZEIxWGtzazJ3bHhPeTV3bTQ2dk5jZmJxVEdUWmw2YVI=', 'base64').toString('utf-8');
 const DEFAULT_NOTION_DB_ID = '3fe87673725e80c484affadee8f672d1';
@@ -31,7 +29,9 @@ export async function pushLeadToNotion(lead: NotionLeadPayload, targetNiche: str
   }
 
   const contactParts: string[] = [];
-  if (lead.email) contactParts.append ? contactParts.push(`📧 إيميل: ${lead.email}`) : contactParts.push(`📧 إيميل: ${lead.email}`);
+  if (lead.email) {
+    contactParts.push(`📧 إيميل: ${lead.email}`);
+  }
   if (lead.socialLinks && lead.socialLinks.length > 0) {
     contactParts.push(`🌐 تواصل: ${lead.socialLinks.join(' | ')}`);
   }
