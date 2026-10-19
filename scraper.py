@@ -46,8 +46,41 @@ SOCIAL_PATTERNS = {
     "Telegram": re.compile(r"(?:https?://)?(?:t\.me|telegram\.me)/[a-zA-Z0-9_.-]+/?", re.IGNORECASE),
 }
 
+FACELESS_PATTERNS = [
+    re.compile(r"ملخص(?:ات)?", re.IGNORECASE),
+    re.compile(r"وثائقي(?:ات)?", re.IGNORECASE),
+    re.compile(r"حقائق", re.IGNORECASE),
+    re.compile(r"غرائب", re.IGNORECASE),
+    re.compile(r"قصص\s*وروايات|قصص\s*رعب|أغرب\s*القصص", re.IGNORECASE),
+    re.compile(r"توب\s*10|توب\s*5|توب\s*تن|top\s*10|top\s*5", re.IGNORECASE),
+    re.compile(r"معلومات\s*عامة|معلومات\s*مفيدة", re.IGNORECASE),
+    re.compile(r"هل\s*تعلم", re.IGNORECASE),
+    re.compile(r"اقتباسات|مقتطفات", re.IGNORECASE),
+    re.compile(r"كرتون|انمي|أنمي|anime", re.IGNORECASE),
+    re.compile(r"نغمات|موسيقى|صوتيات|lofi|relax|meditation", re.IGNORECASE),
+    re.compile(r"تحفيز|تحفيزي", re.IGNORECASE),
+    re.compile(r"منوعات|عالم\s*الغرائب", re.IGNORECASE),
+    re.compile(r"شورتس\s*مجمعة|تجميعات", re.IGNORECASE),
+    re.compile(r"أهداف\s*مباريات|ملخص\s*مباريات", re.IGNORECASE),
+    re.compile(r"documentar(?:y|ies)", re.IGNORECASE),
+    re.compile(r"compilation", re.IGNORECASE),
+    re.compile(r"recap|movie\s*recap|cinema\s*recap", re.IGNORECASE),
+    re.compile(r"quotes|facts|highlights", re.IGNORECASE),
+]
 
-# ==============================================================================
+def is_faceless_channel(title: str, description: str) -> bool:
+    for pat in FACELESS_PATTERNS:
+        if pat.search(title):
+            return True
+    desc_lower = description.lower()
+    if (
+        "قناة مخصصة لنشر ملخصات" in desc_lower
+        or "نقدم لكم حقائق" in desc_lower
+        or "movie recaps" in desc_lower
+        or "compilation of" in desc_lower
+    ):
+        return True
+    return False
 # 🛠️ دوال مساعدة للاتصال بالشبكة عبر معايير بايثون القياسية (بدون مكتبات خارجية)
 # ==============================================================================
 def http_request(url, method="GET", headers=None, data=None):
@@ -328,6 +361,16 @@ def search_youtube_channels(keyword: str, target_count: int, existing_channels: 
                     social_links.append(f"{platform_name}: {matches[0]}")
 
             sub_count = int(stats.get("subscriberCount", 0))
+
+            # 1. شرط الحد الأدنى للمشتركين (1000 مشترك كحد أدنى)
+            if sub_count < 1000:
+                print(f"  ⏭️ [أقل من 1,000 مشترك] تم تخطي: {ch_title} ({sub_count:,} مشترك)")
+                continue
+
+            # 2. شرط استبعاد قنوات الفيسلس (بدون ظهور شخصي)
+            if is_faceless_channel(ch_title, description):
+                print(f"  ⏭️ [فيسلس / بدون ظهور شخصي] تم تخطي: {ch_title}")
+                continue
 
             lead = {
                 "channel_id": cid,

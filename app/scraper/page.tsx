@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Youtube,
   Search,
@@ -20,6 +20,8 @@ import {
   CloudUpload,
   RefreshCw,
   Share2,
+  ShieldAlert,
+  UserCheck,
 } from 'lucide-react';
 import { YouTubeScrapeResult } from '@/types';
 import { formatNumber } from '@/lib/utils';
@@ -40,26 +42,60 @@ const NICHE_PRESETS = [
 export default function ScraperPage() {
   const [query, setQuery] = useState('تسويق إلكتروني');
   const [maxResults, setMaxResults] = useState(20);
+  const [minSubscribers, setMinSubscribers] = useState(1000);
+  const [filterFaceless, setFilterFaceless] = useState(true);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<YouTubeScrapeResult[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<string, boolean>>({});
-  const [saving, setSaving] = useState(false);
   const [syncingNotion, setSyncingNotion] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Search YouTube via live YouTube Data API
-  const handleSearch = async (targetQuery?: string) => {
-    const q = targetQuery || query;
-    if (!q.trim()) return;
+  // Dashboard stats
+  const [totalNotionLeads, setTotalNotionLeads] = useState<number | null>(null);
+  const [loadingNotionCount, setLoadingNotionCount] = useState(false);
+  const [scrapeStats, setScrapeStats] = useState<{
+    totalChecked: number;
+    qualified: number;
+    skippedLowSubscribers: number;
+    skippedFaceless: number;
+  } | null>(null);
+
+  const fetchNotionCount = async () => {
+    setLoadingNotionCount(true);
+    try {
+      const res = await fetch('/api/notion/stats');
+      const data = await res.json();
+      if (data.success) {
+        setTotalNotionLeads(data.totalNotionLeads);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingNotionCount(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotionCount();
+  }, []);
+
+  // Search YouTube strictly upon clicking the search button
+  const handleSearch = async () => {
+    if (!query.trim()) return;
 
     setLoading(true);
     setSaveStatus(null);
     setSelectedChannels({});
     try {
-      const res = await fetch(`/api/scraper/youtube?query=${encodeURIComponent(q)}&maxResults=${maxResults}`);
+      const res = await fetch(
+        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}`
+      );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل البحث في يوتيوب');
       setResults(data.channels || []);
+      if (data.stats) {
+        setScrapeStats(data.stats);
+      }
 
       // Auto-select non-duplicates
       const initialSelection: Record<string, boolean> = {};
@@ -127,6 +163,7 @@ export default function ScraperPage() {
         type: 'success',
         message: `🌟 تم إرسال ${data.syncedCount} عميل بنجاح إلى جدول Notion ("العملاء - متابعة CRM")! (تم تخطي ${data.skippedCount} مكرر)`,
       });
+      fetchNotionCount();
     } catch (err: any) {
       setSaveStatus({
         type: 'error',
@@ -206,7 +243,91 @@ export default function ScraperPage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
-      {/* Header Section */}
+      {/* 📊 Lead Generation Dashboard */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Stat 1: Total Leads in Notion */}
+        <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg relative overflow-hidden group">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-400">إجمالي العملاء في Notion</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <Database className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-white">
+              {loadingNotionCount ? '...' : totalNotionLeads !== null ? totalNotionLeads : '—'}
+            </span>
+            <span className="text-xs text-slate-400 font-semibold">عميل مسجل</span>
+          </div>
+          <button
+            onClick={fetchNotionCount}
+            disabled={loadingNotionCount}
+            className="text-[11px] text-emerald-400/80 hover:text-emerald-300 mt-2 flex items-center gap-1 font-medium transition-colors"
+          >
+            <RefreshCw className={`w-3 h-3 ${loadingNotionCount ? 'animate-spin' : ''}`} />
+            <span>تحديث العدد</span>
+          </button>
+        </div>
+
+        {/* Stat 2: Qualified Leads Found in Current Session */}
+        <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-400">القنوات المطابقة للشروط</span>
+            <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+              <Users className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-white">{results.length}</span>
+            <span className="text-xs text-slate-400 font-semibold">قناة مؤهلة</span>
+          </div>
+          <p className="text-[11px] text-blue-400/80 mt-2 font-medium">
+            (محدد للإرسال: {selectedCount})
+          </p>
+        </div>
+
+        {/* Stat 3: Skipped / Filtered Out (Faceless & Low Subs) */}
+        <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-400">مستبعدة (فيسلس / أقل من 1K)</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-white">
+              {scrapeStats ? scrapeStats.skippedLowSubscribers + scrapeStats.skippedFaceless : 0}
+            </span>
+            <span className="text-xs text-slate-400 font-semibold">قناة مستبعدة</span>
+          </div>
+          <p className="text-[11px] text-amber-400/80 mt-2 font-medium">
+            {scrapeStats
+              ? `${scrapeStats.skippedLowSubscribers} قلة مشتركين • ${scrapeStats.skippedFaceless} فيسلس`
+              : 'فلترة تلقائية صارمة'}
+          </p>
+        </div>
+
+        {/* Stat 4: Direct Emails Extracted */}
+        <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg relative overflow-hidden">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-bold text-slate-400">إيميلات تواصل مباشرة</span>
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+              <Mail className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl md:text-3xl font-black text-white">
+              {results.filter((r) => r.email).length}
+            </span>
+            <span className="text-xs text-slate-400 font-semibold">إيميل جاهز</span>
+          </div>
+          <p className="text-[11px] text-purple-400/80 mt-2 font-medium">
+            جاهزون للتواصل والبيع المباشر
+          </p>
+        </div>
+      </div>
+
+      {/* Header Section & Search Engine */}
       <div className="glass-panel p-6 border border-slate-800 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -237,65 +358,99 @@ export default function ScraperPage() {
         </div>
 
         {/* Search Bar & Filters */}
-        <div className="mt-6 space-y-3">
-          <div className="flex flex-col sm:flex-row gap-3">
+        <div className="mt-6 space-y-4">
+          <div className="flex flex-col lg:flex-row gap-3">
+            {/* Input field - strictly controlled without auto search */}
             <div className="relative flex-1">
               <Search className="w-5 h-5 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                 placeholder="أدخل الكلمات المفتاحية أو المجال (مثال: تسويق، عقارات، مونتاج، بودكاست)..."
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-11 pl-4 py-3.5 text-sm text-white focus:outline-none focus:border-red-500 shadow-inner"
               />
             </div>
 
-            <div className="flex items-center gap-2">
-              <select
-                value={maxResults}
-                onChange={(e) => setMaxResults(parseInt(e.target.value, 10))}
-                className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-3.5 text-xs text-white focus:outline-none focus:border-red-500 font-semibold"
-              >
-                <option value={10}>10 نتائج</option>
-                <option value={20}>20 نتيجة</option>
-                <option value={30}>30 نتيجة</option>
-                <option value={50}>50 نتيجة</option>
-              </select>
+            {/* Filter controls row */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Max Results */}
+              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2">
+                <span className="text-[11px] text-slate-400 font-medium">العدد:</span>
+                <select
+                  value={maxResults}
+                  onChange={(e) => setMaxResults(parseInt(e.target.value, 10))}
+                  className="bg-transparent text-xs text-white focus:outline-none font-semibold cursor-pointer"
+                >
+                  <option value={10} className="bg-slate-900">10 نتائج</option>
+                  <option value={20} className="bg-slate-900">20 نتيجة</option>
+                  <option value={30} className="bg-slate-900">30 نتيجة</option>
+                  <option value={50} className="bg-slate-900">50 نتيجة</option>
+                </select>
+              </div>
 
+              {/* Min Subscribers Filter */}
+              <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2">
+                <span className="text-[11px] text-slate-400 font-medium">المشتركين:</span>
+                <select
+                  value={minSubscribers}
+                  onChange={(e) => setMinSubscribers(parseInt(e.target.value, 10))}
+                  className="bg-transparent text-xs text-emerald-400 focus:outline-none font-semibold cursor-pointer"
+                >
+                  <option value={1000} className="bg-slate-900">1,000+ (إجباري)</option>
+                  <option value={5000} className="bg-slate-900">5,000+ مشترك</option>
+                  <option value={10000} className="bg-slate-900">10,000+ مشترك</option>
+                  <option value={50000} className="bg-slate-900">50,000+ مشترك</option>
+                </select>
+              </div>
+
+              {/* Explicit Search Button - ONLY runs when clicked */}
               <button
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-6 py-3.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all flex-shrink-0"
+                className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-6 py-3.5 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all flex-shrink-0 active:scale-95 cursor-pointer"
               >
                 <Search className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>{loading ? 'جارٍ البحث المباشر...' : 'فحص القنوات'}</span>
+                <span>{loading ? 'جارٍ البحث والفلترة...' : 'بدء فحص وسحب القنوات'}</span>
               </button>
             </div>
           </div>
 
-          {/* Quick Niche Presets */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1">
-            <span className="text-xs text-slate-400 flex items-center gap-1 flex-shrink-0">
-              <Filter className="w-3.5 h-3.5" />
-              <span>المجالات المقترحة:</span>
-            </span>
-            {NICHE_PRESETS.map((preset) => (
-              <button
-                key={preset}
-                onClick={() => {
-                  setQuery(preset);
-                  handleSearch(preset);
-                }}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 font-medium ${
-                  query === preset
-                    ? 'bg-red-600/20 text-red-300 border-red-500/40 font-bold'
-                    : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
-                }`}
-              >
-                {preset}
-              </button>
-            ))}
+          {/* Faceless Filter Toggle & Presets */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
+            {/* Quick Niche Presets (clicking only fills the input, does NOT trigger search) */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <span className="text-xs text-slate-400 flex items-center gap-1 flex-shrink-0">
+                <Filter className="w-3.5 h-3.5" />
+                <span>المجالات:</span>
+              </span>
+              {NICHE_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setQuery(preset)}
+                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 font-medium ${
+                    query === preset
+                      ? 'bg-red-600/20 text-red-300 border-red-500/40 font-bold'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
+                  }`}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+
+            {/* Faceless Channels Exclude Toggle */}
+            <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-colors flex-shrink-0">
+              <input
+                type="checkbox"
+                checked={filterFaceless}
+                onChange={(e) => setFilterFaceless(e.target.checked)}
+                className="rounded border-slate-700 text-red-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+              />
+              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>استبعاد قنوات الفيسلس (بدون ظهور شخصي)</span>
+            </label>
           </div>
         </div>
       </div>

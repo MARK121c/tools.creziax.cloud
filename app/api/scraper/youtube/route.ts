@@ -8,10 +8,12 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('query') || 'صناع محتوى';
-    const maxResults = parseInt(searchParams.get('maxResults') || '10', 10);
+    const maxResults = parseInt(searchParams.get('maxResults') || '20', 10);
+    const minSubscribers = parseInt(searchParams.get('minSubscribers') || '1000', 10);
+    const filterFaceless = searchParams.get('filterFaceless') !== 'false';
 
-    const channels = await searchYouTubeChannels(query, maxResults);
-    return NextResponse.json({ channels, query });
+    const { channels, stats } = await searchYouTubeChannels(query, maxResults, minSubscribers, filterFaceless);
+    return NextResponse.json({ channels, stats, query });
   } catch (error: any) {
     console.error('Scraper API Error:', error);
     return NextResponse.json({ error: error.message || 'Scraping failed' }, { status: 500 });

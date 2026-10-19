@@ -14,10 +14,86 @@ const SOCIAL_PATTERNS: Record<string, RegExp> = {
   Telegram: /(?:https?:\/\/)?(?:t\.me|telegram\.me)\/[a-zA-Z0-9_.-]+/gi,
 };
 
+export interface ScrapeStats {
+  totalChecked: number;
+  qualified: number;
+  skippedLowSubscribers: number;
+  skippedFaceless: number;
+}
+
+// Patterns typical of faceless/compilation/recap channels
+const FACELESS_PATTERNS: RegExp[] = [
+  /ملخص(?:ات)?/i,
+  /وثائقي(?:ات)?/i,
+  /حقائق/i,
+  /غرائب/i,
+  /قصص\s*وروايات|قصص\s*رعب|أغرب\s*القصص/i,
+  /توب\s*10|توب\s*5|توب\s*تن|top\s*10|top\s*5/i,
+  /معلومات\s*عامة|معلومات\s*مفيدة/i,
+  /هل\s*تعلم/i,
+  /اقتباسات|مقتطفات/i,
+  /كرتون|انمي|أنمي|anime/i,
+  /نغمات|موسيقى|صوتيات|lofi|relax|meditation/i,
+  /تحفيز|تحفيزي/i,
+  /منوعات|عالم\s*الغرائب/i,
+  /شورتس\s*مجمعة|تجميعات/i,
+  /أهداف\s*مباريات|ملخص\s*مباريات/i,
+  /documentar(?:y|ies)/i,
+  /compilation/i,
+  /recap|movie\s*recap|cinema\s*recap/i,
+  /quotes/i,
+  /facts/i,
+  /highlights/i,
+  /clips\s*hub|daily\s*clips/i,
+  /shorts\s*hub/i,
+  /daily\s*dose/i,
+];
+
+export function isFacelessChannel(
+  channelTitle: string,
+  description: string,
+  recentVideos: string[] = []
+): boolean {
+  // 1. Channel title indicates faceless entity
+  for (const pat of FACELESS_PATTERNS) {
+    if (pat.test(channelTitle)) return true;
+  }
+
+  // 2. Channel description explicitly states it is a compilation/faceless channel
+  const descLower = description.toLowerCase();
+  if (
+    descLower.includes('قناة مخصصة لنشر ملخصات') ||
+    descLower.includes('نقدم لكم حقائق') ||
+    descLower.includes('أفضل المقاطع واللقطات') ||
+    descLower.includes('movie recaps') ||
+    descLower.includes('compilation of')
+  ) {
+    return true;
+  }
+
+  // 3. Two or more recent videos are obvious compilation/recap/top 10
+  if (recentVideos.length >= 2) {
+    let facelessMatches = 0;
+    for (const vTitle of recentVideos) {
+      for (const pat of FACELESS_PATTERNS) {
+        if (pat.test(vTitle)) {
+          facelessMatches++;
+          break;
+        }
+      }
+    }
+    if (facelessMatches >= 2) return true;
+  }
+
+  return false;
+}
+
 export async function searchYouTubeChannels(
   query: string,
-  maxResults: number = 10
-): Promise<YouTubeScrapeResult[]> {
+  maxResults: number = 20,
+  minSubscribers: number = 1000,
+  filterFaceless: boolean = true
+): Promise<{ channels: YouTubeScrapeResult[]; stats: ScrapeStats }> {
   const customKey = await getSetting('youtube_api_key');
   const apiKey = process.env.YOUTUBE_API_KEY || customKey || DEFAULT_YOUTUBE_API_KEY;
 
@@ -25,11 +101,19 @@ export async function searchYouTubeChannels(
     throw new Error('يرجى ضبط مفتاح YouTube Data API v3 أولاً');
   }
 
+  const stats: ScrapeStats = {
+    totalChecked: 0,
+    qualified: 0,
+    skippedLowSubscribers: 0,
+    skippedFaceless: 0,
+  };
+
   try {
-    // 1. Search for channels
+    // 1. Search for channels - request up to 50 so filtering has enough candidates
+    const fetchLimit = Math.min(Math.max(maxResults * 2, 30), 50);
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
       query
-    )}&maxResults=${Math.min(maxResults, 50)}&key=${apiKey}`;
+    )}&maxResults=${fetchLimit}&key=${apiKey}`;
 
     const searchRes = await fetch(searchUrl);
     if (!searchRes.ok) {
@@ -42,7 +126,7 @@ export async function searchYouTubeChannels(
     const channelIds = (searchData.items || []).map((item: any) => item.snippet?.channelId).filter(Boolean);
 
     if (channelIds.length === 0) {
-      return [];
+      return { channels: [], stats };
     }
 
     // 2. Fetch channel details and statistics
@@ -57,35 +141,38 @@ export async function searchYouTubeChannels(
 
     const channelsData = await channelsRes.json();
     const channelItems = channelsData.items || [];
+    stats.totalChecked = channelItems.length;
 
     // 3. Process each channel
     const results: YouTubeScrapeResult[] = [];
 
     for (const ch of channelItems) {
+      if (results.length >= maxResults) break;
+
       const id = ch.id;
       const snippet = ch.snippet || {};
-      const stats = ch.statistics || {};
+      const chStats = ch.statistics || {};
       const description = snippet.description || '';
       const customUrl = snippet.customUrl || '';
+      const subCount = parseInt(chStats.subscriberCount || '0', 10);
 
-      // Extract email from channel description
+      // Rule 1: Skip if less than minimum subscribers (default: 1,000)
+      if (subCount < minSubscribers) {
+        stats.skippedLowSubscribers++;
+        continue;
+      }
+
+      // Fetch recent 3 videos for email and faceless detection
+      let recentVideos: string[] = [];
+      let email: string | null = null;
+
+      // Extract email from channel description first
       const emailsFound = description.match(EMAIL_REGEX) || [];
       const validEmails = emailsFound.filter(
         (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
       );
-      let email = validEmails.length > 0 ? validEmails[0] : null;
+      if (validEmails.length > 0) email = validEmails[0];
 
-      // Extract social links
-      const socialLinks: string[] = [];
-      for (const [platform, pattern] of Object.entries(SOCIAL_PATTERNS)) {
-        const matches = description.match(pattern);
-        if (matches && matches.length > 0) {
-          socialLinks.push(`${platform}: ${matches[0]}`);
-        }
-      }
-
-      // Fetch recent 3 videos to extract email from video descriptions if not in channel description
-      let recentVideos: string[] = [];
       try {
         const uploadsPlaylistId = ch.contentDetails?.relatedPlaylists?.uploads;
         if (uploadsPlaylistId) {
@@ -114,6 +201,21 @@ export async function searchYouTubeChannels(
         console.warn(`Could not fetch videos for channel ${id}:`, vErr);
       }
 
+      // Rule 2: Skip if faceless channel filter is active
+      if (filterFaceless && isFacelessChannel(snippet.title || '', description, recentVideos)) {
+        stats.skippedFaceless++;
+        continue;
+      }
+
+      // Extract social links
+      const socialLinks: string[] = [];
+      for (const [platform, pattern] of Object.entries(SOCIAL_PATTERNS)) {
+        const matches = description.match(pattern);
+        if (matches && matches.length > 0) {
+          socialLinks.push(`${platform}: ${matches[0]}`);
+        }
+      }
+
       // Check if channel already exists in our local database
       const existingLead = await prisma.lead.findUnique({
         where: { channelId: id },
@@ -128,17 +230,19 @@ export async function searchYouTubeChannels(
         channelName: snippet.title || 'قناة غير معنونة',
         channelUrl: channelDirectUrl,
         avatarUrl: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || '',
-        subscriberCount: parseInt(stats.subscriberCount || '0', 10),
-        videoCount: parseInt(stats.videoCount || '0', 10),
-        viewCount: stats.viewCount ? Number(stats.viewCount).toLocaleString() : '0',
+        subscriberCount: subCount,
+        videoCount: parseInt(chStats.videoCount || '0', 10),
+        viewCount: chStats.viewCount ? Number(chStats.viewCount).toLocaleString() : '0',
         description: description,
         email: email,
+        socialLinks: socialLinks,
         recentVideos: recentVideos,
         isDuplicate: !!existingLead,
       });
     }
 
-    return results;
+    stats.qualified = results.length;
+    return { channels: results, stats };
   } catch (err: any) {
     console.error('searchYouTubeChannels error:', err);
     throw err;
