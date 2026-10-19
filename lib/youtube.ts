@@ -1,8 +1,6 @@
 import { prisma } from './prisma';
-import { getSetting } from './settings';
 import { YouTubeScrapeResult } from '@/types';
-
-const DEFAULT_YOUTUBE_API_KEY = 'AIzaSyCODGyufGj8T907zHv6mgT7-9xXMDQlS2E';
+import { getYoutubeApiKeys } from './token-pool';
 
 const EMAIL_REGEX = /([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/gi;
 
@@ -19,6 +17,7 @@ export interface ScrapeStats {
   qualified: number;
   skippedLowSubscribers: number;
   skippedFaceless: number;
+  keysInPool?: number;
 }
 
 // Patterns typical of faceless/compilation/recap channels
@@ -54,12 +53,10 @@ export function isFacelessChannel(
   description: string,
   recentVideos: string[] = []
 ): boolean {
-  // 1. Channel title indicates faceless entity
   for (const pat of FACELESS_PATTERNS) {
     if (pat.test(channelTitle)) return true;
   }
 
-  // 2. Channel description explicitly states it is a compilation/faceless channel
   const descLower = description.toLowerCase();
   if (
     descLower.includes('قناة مخصصة لنشر ملخصات') ||
@@ -71,7 +68,6 @@ export function isFacelessChannel(
     return true;
   }
 
-  // 3. Two or more recent videos are obvious compilation/recap/top 10
   if (recentVideos.length >= 2) {
     let facelessMatches = 0;
     for (const vTitle of recentVideos) {
@@ -88,17 +84,60 @@ export function isFacelessChannel(
   return false;
 }
 
+/**
+ * Executes a YouTube API request with automatic token rotation upon hitting quota limits
+ */
+async function fetchYouTubeWithFailover(urlBuilder: (apiKey: string) => string): Promise<{ data: any; key: string }> {
+  const keys = await getYoutubeApiKeys();
+  let lastError: any = null;
+
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const url = urlBuilder(key);
+
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        return { data, key };
+      }
+
+      const errorData = await res.json().catch(() => ({}));
+      const msg = errorData.error?.message || `HTTP ${res.status}`;
+      const isQuotaOrLimit =
+        res.status === 403 ||
+        res.status === 429 ||
+        msg.toLowerCase().includes('quota') ||
+        msg.toLowerCase().includes('limit') ||
+        msg.includes('API key not valid');
+
+      if (isQuotaOrLimit && i < keys.length - 1) {
+        console.warn(`[YouTube Key #${i + 1} Limit Reached] Switching to next key in pool...`);
+        continue;
+      }
+
+      lastError = new Error(msg);
+    } catch (e: any) {
+      if (i < keys.length - 1) {
+        console.warn(`[YouTube Key #${i + 1} Request Failed] Trying next key in pool...`);
+        continue;
+      }
+      lastError = e;
+    }
+  }
+
+  throw lastError || new Error('جميع مفاتيح Google API المسجلة استنفدت الكوتا اليومية أو غير صالحة');
+}
+
 export async function searchYouTubeChannels(
   query: string,
   maxResults: number = 20,
   minSubscribers: number = 1000,
   filterFaceless: boolean = true
 ): Promise<{ channels: YouTubeScrapeResult[]; stats: ScrapeStats }> {
-  const customKey = await getSetting('youtube_api_key');
-  const apiKey = process.env.YOUTUBE_API_KEY || customKey || DEFAULT_YOUTUBE_API_KEY;
-
-  if (!apiKey) {
-    throw new Error('يرجى ضبط مفتاح YouTube Data API v3 أولاً');
+  const keys = await getYoutubeApiKeys();
+  if (keys.length === 0) {
+    throw new Error('لا يوجد أي مفتاح YouTube API مسجل في النظام');
   }
 
   const stats: ScrapeStats = {
@@ -106,40 +145,31 @@ export async function searchYouTubeChannels(
     qualified: 0,
     skippedLowSubscribers: 0,
     skippedFaceless: 0,
+    keysInPool: keys.length,
   };
 
   try {
-    // 1. Search for channels - request up to 50 so filtering has enough candidates
+    // 1. Search for channels with automatic token failover
     const fetchLimit = Math.min(Math.max(maxResults * 2, 30), 50);
-    const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
-      query
-    )}&maxResults=${fetchLimit}&key=${apiKey}`;
+    const { data: searchData } = await fetchYouTubeWithFailover((key) =>
+      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
+        query
+      )}&maxResults=${fetchLimit}&key=${key}`
+    );
 
-    const searchRes = await fetch(searchUrl);
-    if (!searchRes.ok) {
-      const errorData = await searchRes.json().catch(() => ({}));
-      console.error('YouTube search API error:', errorData);
-      throw new Error(errorData.error?.message || `YouTube API request failed (HTTP ${searchRes.status})`);
-    }
-
-    const searchData = await searchRes.json();
     const channelIds = (searchData.items || []).map((item: any) => item.snippet?.channelId).filter(Boolean);
 
     if (channelIds.length === 0) {
       return { channels: [], stats };
     }
 
-    // 2. Fetch channel details and statistics
-    const channelsUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${channelIds.join(
-      ','
-    )}&key=${apiKey}`;
+    // 2. Fetch channel details and statistics with failover
+    const { data: channelsData } = await fetchYouTubeWithFailover((key) =>
+      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${channelIds.join(
+        ','
+      )}&key=${key}`
+    );
 
-    const channelsRes = await fetch(channelsUrl);
-    if (!channelsRes.ok) {
-      throw new Error('YouTube Channels API request failed');
-    }
-
-    const channelsData = await channelsRes.json();
     const channelItems = channelsData.items || [];
     stats.totalChecked = channelItems.length;
 
@@ -176,23 +206,21 @@ export async function searchYouTubeChannels(
       try {
         const uploadsPlaylistId = ch.contentDetails?.relatedPlaylists?.uploads;
         if (uploadsPlaylistId) {
-          const playlistUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=3&key=${apiKey}`;
-          const plRes = await fetch(playlistUrl);
-          if (plRes.ok) {
-            const plData = await plRes.json();
-            for (const item of plData.items || []) {
-              const vTitle = item.snippet?.title;
-              if (vTitle) recentVideos.push(vTitle);
+          const { data: plData } = await fetchYouTubeWithFailover((key) =>
+            `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=3&key=${key}`
+          );
+          for (const item of plData.items || []) {
+            const vTitle = item.snippet?.title;
+            if (vTitle) recentVideos.push(vTitle);
 
-              if (!email) {
-                const vDesc = item.snippet?.description || '';
-                const vEmails = vDesc.match(EMAIL_REGEX) || [];
-                const vValid = vEmails.filter(
-                  (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
-                );
-                if (vValid.length > 0) {
-                  email = vValid[0];
-                }
+            if (!email) {
+              const vDesc = item.snippet?.description || '';
+              const vEmails = vDesc.match(EMAIL_REGEX) || [];
+              const vValid = vEmails.filter(
+                (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
+              );
+              if (vValid.length > 0) {
+                email = vValid[0];
               }
             }
           }

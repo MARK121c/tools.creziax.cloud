@@ -22,6 +22,11 @@ import {
   Share2,
   ShieldAlert,
   UserCheck,
+  Key,
+  Trash2,
+  PlusCircle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { YouTubeScrapeResult } from '@/types';
 import { formatNumber } from '@/lib/utils';
@@ -75,9 +80,71 @@ export default function ScraperPage() {
     }
   };
 
+  // Google API Token Pool state
+  const [tokenPool, setTokenPool] = useState<Array<{ index: number; key: string; masked: string; isDefault: boolean }>>([]);
+  const [showTokenManager, setShowTokenManager] = useState(false);
+  const [newTokenInput, setNewTokenInput] = useState('');
+  const [tokenLoading, setTokenLoading] = useState(false);
+  const [tokenMessage, setTokenMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const fetchTokens = async () => {
+    try {
+      const res = await fetch('/api/scraper/tokens');
+      const data = await res.json();
+      if (data.success) {
+        setTokenPool(data.keys || []);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   useEffect(() => {
     fetchNotionCount();
+    fetchTokens();
   }, []);
+
+  const handleAddToken = async () => {
+    if (!newTokenInput.trim()) return;
+    setTokenLoading(true);
+    setTokenMessage(null);
+    try {
+      const res = await fetch('/api/scraper/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'add', key: newTokenInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'فشلت إضافة التوكن');
+      setTokenPool(data.keys || []);
+      setNewTokenInput('');
+      setTokenMessage({ type: 'success', text: '✅ تمت إضافة المفتاح إلى مجموعة التناوب بنجاح!' });
+    } catch (err: any) {
+      setTokenMessage({ type: 'error', text: err.message || 'حدث خطأ أثناء إضافة المفتاح' });
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
+  const handleDeleteToken = async (keyToDelete: string) => {
+    setTokenLoading(true);
+    setTokenMessage(null);
+    try {
+      const res = await fetch('/api/scraper/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete', key: keyToDelete }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'فشل حذف التوكن');
+      setTokenPool(data.keys || []);
+      setTokenMessage({ type: 'success', text: '🗑️ تم حذف المفتاح من المجموعة' });
+    } catch (err: any) {
+      setTokenMessage({ type: 'error', text: err.message || 'حدث خطأ أثناء حذف المفتاح' });
+    } finally {
+      setTokenLoading(false);
+    }
+  };
 
   // Search YouTube strictly upon clicking the search button
   const handleSearch = async () => {
@@ -325,6 +392,110 @@ export default function ScraperPage() {
             جاهزون للتواصل والبيع المباشر
           </p>
         </div>
+      </div>
+
+      {/* 🔑 Google Tokens Pool Manager */}
+      <div className="glass-panel border border-slate-800 rounded-2xl bg-slate-900/60 overflow-hidden shadow-lg transition-all">
+        <button
+          type="button"
+          onClick={() => setShowTokenManager(!showTokenManager)}
+          className="w-full p-4 flex items-center justify-between text-right hover:bg-slate-800/40 transition-colors"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+              <Key className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-black text-white">إدارة مفاتيح جوجل (Token Pool & Auto-Failover)</span>
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
+                  {tokenPool.length} مفتاح مسجل
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                تداول ذكي: عند انتهاء كوتا أي مفتاح (10,000 كوتا يومياً)، يحول النظام تلقائياً للمفتاح التالي دون توقف السحب.
+              </p>
+            </div>
+          </div>
+          <div className="text-slate-400 p-2">
+            {showTokenManager ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </div>
+        </button>
+
+        {showTokenManager && (
+          <div className="p-5 border-t border-slate-800 space-y-4 bg-slate-950/50 animate-fade-in">
+            {/* Notification message */}
+            {tokenMessage && (
+              <div
+                className={`p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${
+                  tokenMessage.type === 'success'
+                    ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                    : 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+                }`}
+              >
+                {tokenMessage.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                <span>{tokenMessage.text}</span>
+              </div>
+            )}
+
+            {/* List of keys */}
+            <div className="space-y-2">
+              <span className="text-xs font-bold text-slate-300 block">المفاتيح المسجلة حالياً للتناوب:</span>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {tokenPool.map((t) => (
+                  <div
+                    key={t.key}
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold flex items-center justify-center">
+                        #{t.index}
+                      </span>
+                      <code className="text-xs font-mono text-emerald-400 font-bold">{t.masked}</code>
+                      {t.isDefault && (
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">
+                          افتراضي
+                        </span>
+                      )}
+                    </div>
+                    {tokenPool.length > 1 && (
+                      <button
+                        onClick={() => handleDeleteToken(t.key)}
+                        disabled={tokenLoading}
+                        title="حذف المفتاح من المجموعة"
+                        className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Add new key input */}
+            <div className="pt-2 border-t border-slate-800/80">
+              <span className="text-xs font-bold text-slate-300 block mb-2">إضافة مفتاح جديد للمجموعة:</span>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newTokenInput}
+                  onChange={(e) => setNewTokenInput(e.target.value)}
+                  placeholder="ألصق مفتاح YouTube Data API v3 الجديد هنا (يبدأ بـ AIzaSy...)..."
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                />
+                <button
+                  onClick={handleAddToken}
+                  disabled={tokenLoading || !newTokenInput.trim()}
+                  className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-slate-950 px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition-all flex-shrink-0 cursor-pointer"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  <span>{tokenLoading ? 'جارٍ الإضافة...' : 'إضافة المفتاح'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Header Section & Search Engine */}
