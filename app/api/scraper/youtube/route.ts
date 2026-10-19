@@ -11,8 +11,9 @@ export async function GET(req: NextRequest) {
     const maxResults = parseInt(searchParams.get('maxResults') || '20', 10);
     const minSubscribers = parseInt(searchParams.get('minSubscribers') || '1000', 10);
     const filterFaceless = searchParams.get('filterFaceless') !== 'false';
+    const onlyArabic = searchParams.get('onlyArabic') !== 'false';
 
-    const { channels, stats } = await searchYouTubeChannels(query, maxResults, minSubscribers, filterFaceless);
+    const { channels, stats } = await searchYouTubeChannels(query, maxResults, minSubscribers, filterFaceless, onlyArabic);
     return NextResponse.json({ channels, stats, query });
   } catch (error: any) {
     console.error('Scraper API Error:', error);

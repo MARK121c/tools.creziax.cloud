@@ -17,26 +17,37 @@ export interface ScrapeStats {
   qualified: number;
   skippedLowSubscribers: number;
   skippedFaceless: number;
+  skippedNonArabic: number;
   keysInPool?: number;
 }
 
-// Patterns typical of faceless/compilation/recap channels
-const FACELESS_PATTERNS: RegExp[] = [
+// Keywords that immediately indicate an impersonal, compilation, or faceless channel
+const FACELESS_KEYWORDS: RegExp[] = [
   /ملخص(?:ات)?/i,
   /وثائقي(?:ات)?/i,
   /حقائق/i,
   /غرائب/i,
-  /قصص\s*وروايات|قصص\s*رعب|أغرب\s*القصص/i,
-  /توب\s*10|توب\s*5|توب\s*تن|top\s*10|top\s*5/i,
-  /معلومات\s*عامة|معلومات\s*مفيدة/i,
+  /عجائب/i,
+  /أسرار/i,
+  /قصص/i,
+  /حكايات/i,
+  /روايات/i,
+  /توب\s*\d+|top\s*\d+/i,
+  /معلومات/i,
   /هل\s*تعلم/i,
   /اقتباسات|مقتطفات/i,
   /كرتون|انمي|أنمي|anime/i,
-  /نغمات|موسيقى|صوتيات|lofi|relax|meditation/i,
-  /تحفيز|تحفيزي/i,
-  /منوعات|عالم\s*الغرائب/i,
-  /شورتس\s*مجمعة|تجميعات/i,
-  /أهداف\s*مباريات|ملخص\s*مباريات/i,
+  /نغمات|موسيقى|صوتيات|lofi|relax|meditation|beats/i,
+  /تحفيز|تحفيزي|motivation/i,
+  /منوعات|عالم\s*الـ|كوكب\s*الـ/i,
+  /شورتس\s*مجمعة|تجميعات|تجميعة/i,
+  /أهداف\s*مباريات|ملخص\s*مباريات|كورة|كرة\s*قدم/i,
+  /أخبار|عاجل|نبض/i,
+  /سينما|أفلام|مسلسلات|دراما/i,
+  /طبخ|وصفات|أكلات|مطبخ/i,
+  /ثقافة|ثقف\s*نفسك/i,
+  /رعب|جن|أشباح/i,
+  /شاشة|محطة|منصة|قناة/i,
   /documentar(?:y|ies)/i,
   /compilation/i,
   /recap|movie\s*recap|cinema\s*recap/i,
@@ -46,41 +57,78 @@ const FACELESS_PATTERNS: RegExp[] = [
   /clips\s*hub|daily\s*clips/i,
   /shorts\s*hub/i,
   /daily\s*dose/i,
+  /production|studio|official|channel|hub|network|media/i,
 ];
 
-export function isFacelessChannel(
+// Indicators that prove a real individual / influencer is presenting (Personal Creator)
+const PERSONAL_BRANDING_INDICATORS: RegExp[] = [
+  // 1st person pronouns & talk
+  /(?:أنا\s|اسمي\s|معاكم\s|معكم\s|أشارككم|أقدم\s*لكم\s*تجربتي|فلوجاتي|يومياتي|رحلتي|فلوج|vlog|vlogs)/i,
+  // Interviews & direct personal interaction
+  /(?:بودكاست\s*مع|حوار\s*مع|مقابلة\s*مع|ضيفي\s*اليوم|مع\s+[أ-ي]+)/i,
+  // Honorific titles associated with real persons
+  /(?:دكتور|د\.|مهندس|م\.|كابتن|مستر|شيف|أستاذ|أ\.|المدرب|صانع\s*محتوى|مستشار)/i,
+];
+
+export function isPersonalCreatorChannel(
   channelTitle: string,
   description: string,
-  recentVideos: string[] = []
+  recentVideos: string[] = [],
+  customUrl: string = ''
 ): boolean {
-  for (const pat of FACELESS_PATTERNS) {
-    if (pat.test(channelTitle)) return true;
+  const cleanTitle = channelTitle.trim();
+  const fullText = `${cleanTitle} ${description}`.toLowerCase();
+
+  // 1. Any direct faceless keyword in title -> REJECT IMMEDIATELY
+  for (const pat of FACELESS_KEYWORDS) {
+    if (pat.test(cleanTitle)) {
+      return false;
+    }
   }
 
-  const descLower = description.toLowerCase();
-  if (
-    descLower.includes('قناة مخصصة لنشر ملخصات') ||
-    descLower.includes('نقدم لكم حقائق') ||
-    descLower.includes('أفضل المقاطع واللقطات') ||
-    descLower.includes('movie recaps') ||
-    descLower.includes('compilation of')
-  ) {
-    return true;
-  }
-
+  // 2. If recent videos are mostly compilations/recaps/faceless topics -> REJECT
   if (recentVideos.length >= 2) {
-    let facelessMatches = 0;
+    let facelessVideoMatches = 0;
     for (const vTitle of recentVideos) {
-      for (const pat of FACELESS_PATTERNS) {
+      for (const pat of FACELESS_KEYWORDS) {
         if (pat.test(vTitle)) {
-          facelessMatches++;
+          facelessVideoMatches++;
           break;
         }
       }
     }
-    if (facelessMatches >= 2) return true;
+    if (facelessVideoMatches >= 2) {
+      return false;
+    }
   }
 
+  // 3. Positive check: Does it have personal branding signals?
+  for (const pat of PERSONAL_BRANDING_INDICATORS) {
+    if (pat.test(fullText)) {
+      return true;
+    }
+  }
+
+  // 4. Name structure check: Does the title look like a personal human name?
+  // e.g. "أحمد فلان", "Mohamed Ali", "Dr. Hany", "خالد المصري - تسويق"
+  const nameParts = cleanTitle.split(/[-–|،:]/)[0].trim().split(/\s+/);
+  if (nameParts.length >= 2 && nameParts.length <= 4) {
+    const isArabicName = nameParts.every((p) => /^[\u0600-\u06FF]{2,15}$/.test(p));
+    if (isArabicName) {
+      const firstWord = nameParts[0];
+      const nonNameStarters = ['عالم', 'قناة', 'كوكب', 'موقع', 'صفحة', 'فكرة', 'طريقة', 'تعلم', 'احترف', 'أسرار', 'أخبار', 'أفضل'];
+      if (!nonNameStarters.includes(firstWord)) {
+        return true;
+      }
+    }
+  }
+
+  // 5. Handle check: if handle starts with personal name e.g. @ahmed, @mohamed, etc.
+  if (customUrl && /@(ahmed|mohamed|mahmoud|ali|omar|sara|nour|karim|tarek|hassan|ibrahim|youssef|mostafa)/i.test(customUrl)) {
+    return true;
+  }
+
+  // If none of the personal signals matched, it's an anonymous/faceless channel
   return false;
 }
 
@@ -133,7 +181,8 @@ export async function searchYouTubeChannels(
   query: string,
   maxResults: number = 20,
   minSubscribers: number = 1000,
-  filterFaceless: boolean = true
+  filterFaceless: boolean = true,
+  onlyArabic: boolean = true
 ): Promise<{ channels: YouTubeScrapeResult[]; stats: ScrapeStats }> {
   const keys = await getYoutubeApiKeys();
   if (keys.length === 0) {
@@ -145,16 +194,18 @@ export async function searchYouTubeChannels(
     qualified: 0,
     skippedLowSubscribers: 0,
     skippedFaceless: 0,
+    skippedNonArabic: 0,
     keysInPool: keys.length,
   };
 
   try {
-    // 1. Search for channels with automatic token failover
-    const fetchLimit = Math.min(Math.max(maxResults * 2, 30), 50);
+    // 1. Search for channels with automatic token failover + Arabic language priority
+    const fetchLimit = Math.min(Math.max(maxResults * 3, 40), 50);
+    const langParam = onlyArabic ? '&relevanceLanguage=ar' : '';
     const { data: searchData } = await fetchYouTubeWithFailover((key) =>
       `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
         query
-      )}&maxResults=${fetchLimit}&key=${key}`
+      )}&maxResults=${fetchLimit}${langParam}&key=${key}`
     );
 
     const channelIds = (searchData.items || []).map((item: any) => item.snippet?.channelId).filter(Boolean);
@@ -185,6 +236,15 @@ export async function searchYouTubeChannels(
       const description = snippet.description || '';
       const customUrl = snippet.customUrl || '';
       const subCount = parseInt(chStats.subscriberCount || '0', 10);
+
+      // Rule 0: Strict Arabic Language Filter
+      if (onlyArabic) {
+        const arabicLetters = (snippet.title + ' ' + description).match(/[\u0600-\u06FF]/g) || [];
+        if (arabicLetters.length < 5) {
+          stats.skippedNonArabic++;
+          continue;
+        }
+      }
 
       // Rule 1: Skip if less than minimum subscribers (default: 1,000)
       if (subCount < minSubscribers) {
@@ -229,8 +289,8 @@ export async function searchYouTubeChannels(
         console.warn(`Could not fetch videos for channel ${id}:`, vErr);
       }
 
-      // Rule 2: Skip if faceless channel filter is active
-      if (filterFaceless && isFacelessChannel(snippet.title || '', description, recentVideos)) {
+      // Rule 2: Skip if faceless channel filter is active (Must be a personal creator with face)
+      if (filterFaceless && !isPersonalCreatorChannel(snippet.title || '', description, recentVideos, customUrl)) {
         stats.skippedFaceless++;
         continue;
       }

@@ -68,10 +68,15 @@ FACELESS_PATTERNS = [
     re.compile(r"quotes|facts|highlights", re.IGNORECASE),
 ]
 
-def is_faceless_channel(title: str, description: str) -> bool:
+def is_personal_creator_channel(title: str, description: str, custom_url: str = "") -> bool:
+    clean_title = title.strip()
+    full_text = f"{clean_title} {description}".lower()
+
+    # 1. فحص الكلمات الدالة على الفيسلس والتجميعات
     for pat in FACELESS_PATTERNS:
-        if pat.search(title):
-            return True
+        if pat.search(clean_title):
+            return False
+
     desc_lower = description.lower()
     if (
         "قناة مخصصة لنشر ملخصات" in desc_lower
@@ -79,8 +84,30 @@ def is_faceless_channel(title: str, description: str) -> bool:
         or "movie recaps" in desc_lower
         or "compilation of" in desc_lower
     ):
-        return True
+        return False
+
+    # 2. فحص إشارات صانع المحتوى الشخصي (ضمائر وتجارب شخصية)
+    personal_signals = [
+        r"(?:أنا\s|اسمي\s|معاكم\s|معكم\s|أشارككم|أقدم\s*لكم\s*تجربتي|فلوجاتي|يومياتي|رحلتي|فلوج|vlog|vlogs)",
+        r"(?:بودكاست\s*مع|حوار\s*مع|مقابلة\s*مع|ضيفي\s*اليوم|مع\s+[أ-ي]+)",
+        r"(?:دكتور|د\.|مهندس|م\.|كابتن|مستر|شيف|أستاذ|أ\.|المدرب|صانع\s*محتوى|مستشار)",
+    ]
+    for sig in personal_signals:
+        if re.search(sig, full_text, re.IGNORECASE):
+            return True
+
+    # 3. فحص هيكل الاسم: هل هو اسم شخصي من كلمتين أو ثلاثة؟
+    name_parts = re.split(r"[-–|،:]", clean_title)[0].strip().split()
+    if 2 <= len(name_parts) <= 4:
+        is_arabic_words = all(re.match(r"^[\u0600-\u06FF]{2,15}$", p) for p in name_parts)
+        if is_arabic_words:
+            first_word = name_parts[0]
+            non_name_starters = ["عالم", "قناة", "كوكب", "موقع", "صفحة", "فكرة", "طريقة", "تعلم", "احترف", "أسرار", "أخبار", "أفضل"]
+            if first_word not in non_name_starters:
+                return True
+
     return False
+
 # 🛠️ دوال مساعدة للاتصال بالشبكة عبر معايير بايثون القياسية (بدون مكتبات خارجية)
 # ==============================================================================
 def http_request(url, method="GET", headers=None, data=None):
@@ -271,7 +298,8 @@ def search_youtube_channels(keyword: str, target_count: int, existing_channels: 
             "part": "snippet",
             "type": "channel",
             "q": keyword,
-            "maxResults": min(50, (target_count - len(collected_leads)) * 2),
+            "relevanceLanguage": "ar",
+            "maxResults": min(50, max(20, (target_count - len(collected_leads)) * 3)),
             "key": YOUTUBE_API_KEY,
         }
         if next_page_token:
@@ -360,6 +388,12 @@ def search_youtube_channels(keyword: str, target_count: int, existing_channels: 
                 if matches:
                     social_links.append(f"{platform_name}: {matches[0]}")
 
+            # 0. شرط اللغة العربية حصراً
+            arabic_chars = re.findall(r"[\u0600-\u06FF]", f"{ch_title} {description}")
+            if len(arabic_chars) < 5:
+                print(f"  ⏭️ [لغة أجنبية] تم تخطي: {ch_title}")
+                continue
+
             sub_count = int(stats.get("subscriberCount", 0))
 
             # 1. شرط الحد الأدنى للمشتركين (1000 مشترك كحد أدنى)
@@ -368,7 +402,7 @@ def search_youtube_channels(keyword: str, target_count: int, existing_channels: 
                 continue
 
             # 2. شرط استبعاد قنوات الفيسلس (بدون ظهور شخصي)
-            if is_faceless_channel(ch_title, description):
+            if not is_personal_creator_channel(ch_title, description, custom_url):
                 print(f"  ⏭️ [فيسلس / بدون ظهور شخصي] تم تخطي: {ch_title}")
                 continue
 

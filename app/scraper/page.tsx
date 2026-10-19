@@ -49,6 +49,7 @@ export default function ScraperPage() {
   const [maxResults, setMaxResults] = useState(20);
   const [minSubscribers, setMinSubscribers] = useState(1000);
   const [filterFaceless, setFilterFaceless] = useState(true);
+  const [onlyArabic, setOnlyArabic] = useState(true);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<YouTubeScrapeResult[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<string, boolean>>({});
@@ -63,6 +64,7 @@ export default function ScraperPage() {
     qualified: number;
     skippedLowSubscribers: number;
     skippedFaceless: number;
+    skippedNonArabic: number;
   } | null>(null);
 
   const fetchNotionCount = async () => {
@@ -155,7 +157,7 @@ export default function ScraperPage() {
     setSelectedChannels({});
     try {
       const res = await fetch(
-        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}`
+        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل البحث في يوتيوب');
@@ -356,20 +358,20 @@ export default function ScraperPage() {
         {/* Stat 3: Skipped / Filtered Out (Faceless & Low Subs) */}
         <div className="glass-panel p-4 rounded-2xl border border-slate-800 bg-slate-900/60 shadow-lg relative overflow-hidden">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-400">مستبعدة (فيسلس / أقل من 1K)</span>
+            <span className="text-xs font-bold text-slate-400">مستبعدة (فيسلس / أجنبي / أقل من 1K)</span>
             <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
               <ShieldAlert className="w-4 h-4" />
             </div>
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl md:text-3xl font-black text-white">
-              {scrapeStats ? scrapeStats.skippedLowSubscribers + scrapeStats.skippedFaceless : 0}
+              {scrapeStats ? scrapeStats.skippedLowSubscribers + scrapeStats.skippedFaceless + (scrapeStats.skippedNonArabic || 0) : 0}
             </span>
             <span className="text-xs text-slate-400 font-semibold">قناة مستبعدة</span>
           </div>
           <p className="text-[11px] text-amber-400/80 mt-2 font-medium">
             {scrapeStats
-              ? `${scrapeStats.skippedLowSubscribers} قلة مشتركين • ${scrapeStats.skippedFaceless} فيسلس`
+              ? `${scrapeStats.skippedFaceless} فيسلس • ${scrapeStats.skippedNonArabic || 0} غير عربي • ${scrapeStats.skippedLowSubscribers} < 1K`
               : 'فلترة تلقائية صارمة'}
           </p>
         </div>
@@ -611,17 +613,30 @@ export default function ScraperPage() {
               ))}
             </div>
 
-            {/* Faceless Channels Exclude Toggle */}
-            <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-colors flex-shrink-0">
-              <input
-                type="checkbox"
-                checked={filterFaceless}
-                onChange={(e) => setFilterFaceless(e.target.checked)}
-                className="rounded border-slate-700 text-red-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-              />
-              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>استبعاد قنوات الفيسلس (بدون ظهور شخصي)</span>
-            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Only Arabic Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-colors flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={onlyArabic}
+                  onChange={(e) => setOnlyArabic(e.target.checked)}
+                  className="rounded border-slate-700 text-emerald-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                />
+                <span className="text-emerald-400 font-bold">🇸🇦 عربي فقط</span>
+              </label>
+
+              {/* Faceless Channels Exclude Toggle */}
+              <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-colors flex-shrink-0">
+                <input
+                  type="checkbox"
+                  checked={filterFaceless}
+                  onChange={(e) => setFilterFaceless(e.target.checked)}
+                  className="rounded border-slate-700 text-red-600 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                />
+                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>صناع محتوى شخصيين فقط (استبعاد Faceless)</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
