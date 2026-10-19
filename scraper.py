@@ -392,8 +392,29 @@ def main():
 
     print("\n" + "=" * 75)
     print(f"🎉 اكتملت العملية بنجاح!")
-    print(f"📊 إجمالي العملاء الجدد المضافين إلى جدول 'العملاء - متابعة CRM': {len(results)} عميل")
+    print(f"📊 إجمالي العملاء الجدد المضافين إلى جدول 'CRM العملاء - متابعة': {len(results)} عميل")
     print(f"⏱️ الوقت المستغرق: {elapsed:.1f} ثانية")
+
+    if results:
+        csv_filename = f"leads_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        try:
+            import csv
+            with open(csv_filename, mode="w", encoding="utf-8-sig", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(["اسم القناة / العميل", "المجال / النتش", "البريد الإلكتروني", "روابط التواصل", "عدد المشتركين", "رابط القناة"])
+                for r in results:
+                    writer.writerow([
+                        r.get("channel_name", ""),
+                        niche,
+                        r.get("email", "") or "",
+                        " | ".join(r.get("social_links", [])),
+                        r.get("subscribers", 0),
+                        r.get("channel_url", "")
+                    ])
+            print(f"📁 تم حفظ نسخة إكسل شيت تلقائياً: {csv_filename}")
+        except Exception:
+            pass
+
     print("=" * 75 + "\n")
 
 

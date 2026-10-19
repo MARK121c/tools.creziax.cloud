@@ -12,6 +12,7 @@ import {
   Eye,
   Mail,
   Download,
+  FileSpreadsheet,
   Plus,
   ExternalLink,
   Sparkles,
@@ -138,45 +139,67 @@ export default function ScraperPage() {
     }
   };
 
-  // Save selected leads to local CRM SQLite database
-  const handleSaveToCRM = async () => {
-    const leadsToSave = results.filter((r) => selectedChannels[r.channelId]);
-    if (leadsToSave.length === 0) {
-      setSaveStatus({ type: 'error', message: 'يرجى تحديد قناة واحدة على الأقل للحفظ' });
+  // Export leads directly to Excel / CSV with UTF-8 BOM
+  const handleExportToExcel = () => {
+    const selectedList = results.filter((r) => selectedChannels[r.channelId]);
+    const items = selectedList.length > 0 ? selectedList : results;
+
+    if (items.length === 0) {
+      setSaveStatus({ type: 'error', message: 'لا توجد بيانات لتصديرها كملف Excel' });
       return;
     }
 
-    setSaving(true);
-    setSaveStatus(null);
-    try {
-      const res = await fetch('/api/scraper/youtube', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leads: leadsToSave,
-          niche: query,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل حفظ العملاء');
+    const headers = [
+      'اسم القناة / العميل',
+      'المجال / النتش',
+      'البريد الإلكتروني',
+      'روابط التواصل الاجتماعي',
+      'عدد المشتركين',
+      'عدد الفيديوهات',
+      'إجمالي المشاهدات',
+      'رابط القناة',
+      'وصف القناة'
+    ];
 
-      setSaveStatus({
-        type: 'success',
-        message: `تم حفظ ${data.savedCount} عميل جديد بنجاح إلى قاعدة بيانات CRM! (تم تخطي ${data.skippedCount} مكرر)`,
-      });
+    const escapeCsv = (val: any) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
 
-      // Mark saved as duplicates in view
-      setResults((prev) =>
-        prev.map((item) =>
-          selectedChannels[item.channelId] ? { ...item, isDuplicate: true } : item
-        )
-      );
-      setSelectedChannels({});
-    } catch (err: any) {
-      setSaveStatus({ type: 'error', message: err.message || 'فشل حفظ العملاء' });
-    } finally {
-      setSaving(false);
-    }
+    const rows = items.map((ch) => [
+      escapeCsv(ch.channelName),
+      escapeCsv(query || 'عام'),
+      escapeCsv(ch.email || ''),
+      escapeCsv((ch.socialLinks || []).join(' | ')),
+      escapeCsv(ch.subscriberCount || 0),
+      escapeCsv(ch.videoCount || 0),
+      escapeCsv(ch.viewCount || 0),
+      escapeCsv(ch.channelUrl),
+      escapeCsv(ch.description || '')
+    ]);
+
+    // \uFEFF ensures Excel displays Arabic text properly without encoding artifacts
+    const csvContent = '\uFEFF' + [
+      headers.map(escapeCsv).join(','),
+      ...rows.map((row) => row.join(','))
+    ].join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const safeQuery = (query || 'leads').trim().replace(/[\s/\\?%*:|"<>]+/g, '_');
+    link.href = url;
+    link.setAttribute('download', `Creziax_Leads_${safeQuery}_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setSaveStatus({
+      type: 'success',
+      message: `📊 تم تحميل ملف Excel بنجاح لـ ${items.length} صانع محتوى!`,
+    });
   };
 
   const selectedCount = Object.values(selectedChannels).filter(Boolean).length;
@@ -325,12 +348,22 @@ export default function ScraperPage() {
               </span>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Export to Excel Button */}
+              <button
+                onClick={handleExportToExcel}
+                className="bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md transition-all"
+                title="تنزيل البيانات كملف إكسل شيت متوافق مع Excel و Google Sheets"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <span>تنزيل Excel ({selectedCount > 0 ? selectedCount : results.length})</span>
+              </button>
+
               {/* Sync to Notion Button */}
               <button
                 onClick={handleSyncToNotion}
                 disabled={syncingNotion || selectedCount === 0}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white px-6 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
               >
                 <CloudUpload className={`w-4 h-4 ${syncingNotion ? 'animate-bounce' : ''}`} />
                 <span>{syncingNotion ? 'جارٍ الإرسال إلى Notion...' : `إرسال إلى Notion CRM (${selectedCount})`}</span>
