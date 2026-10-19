@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
     const maxResults = parseInt(searchParams.get('maxResults') || '20', 10);
     const minSubscribers = parseInt(searchParams.get('minSubscribers') || '1000', 10);
     const filterFaceless = searchParams.get('filterFaceless') !== 'false';
+    const onlyArabic = searchParams.get('onlyArabic') !== 'false';
     const strictNameOnly = searchParams.get('strictNameOnly') === 'true';
     const pageToken = searchParams.get('pageToken') || null;
 
