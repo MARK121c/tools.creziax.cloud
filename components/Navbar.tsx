@@ -42,8 +42,8 @@ export const Navbar: React.FC = () => {
   };
 
   // Identify active tool
-  let toolTitle = 'منظومة المبيعات والـ CRM';
-  let toolColor = 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20';
+  let toolTitle = 'سحب داتا يوتيوب ➔ Notion';
+  let toolColor = 'text-red-400 bg-red-500/10 border-red-500/20';
 
   if (pathname.startsWith('/tools/meeting-recorder')) {
     toolTitle = 'استوديو مسجل الاجتماعات';
@@ -90,16 +90,15 @@ export const Navbar: React.FC = () => {
         {/* Quick Tool Switch Buttons */}
         <div className="hidden lg:flex items-center gap-1.5 bg-slate-900/80 border border-slate-800 p-1 rounded-xl">
           <Link
-            href="/"
-            title="أداة المبيعات والـ CRM"
+            href="/scraper"
+            title="أداة سحب داتا يوتيوب"
             className={`px-2.5 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              !pathname.startsWith('/tools') && !pathname.startsWith('/settings')
-                ? 'bg-indigo-600 text-white shadow-sm'
+              pathname.startsWith('/scraper') || pathname === '/'
+                ? 'bg-red-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Sparkles className="w-3 h-3" />
-            <span>المبيعات</span>
+            <span>سحب الداتا</span>
           </Link>
 
           <Link

@@ -206,13 +206,10 @@ export default function ScraperPage() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Link
-              href="/crm"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-700 transition-all shadow-md"
-            >
-              <Users className="w-4 h-4 text-blue-400" />
-              <span>جدول الـ CRM المحلي</span>
-            </Link>
+            <div className="bg-slate-900 border border-slate-800 text-slate-300 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm">
+              <Database className="w-4 h-4 text-emerald-400" />
+              <span>جدول: العملاء - متابعة CRM</span>
+            </div>
           </div>
         </div>
 
@@ -333,20 +330,10 @@ export default function ScraperPage() {
               <button
                 onClick={handleSyncToNotion}
                 disabled={syncingNotion || selectedCount === 0}
-                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white px-6 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
               >
                 <CloudUpload className={`w-4 h-4 ${syncingNotion ? 'animate-bounce' : ''}`} />
                 <span>{syncingNotion ? 'جارٍ الإرسال إلى Notion...' : `إرسال إلى Notion CRM (${selectedCount})`}</span>
-              </button>
-
-              {/* Save to Local CRM Button */}
-              <button
-                onClick={handleSaveToCRM}
-                disabled={saving || selectedCount === 0}
-                className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-700 transition-all"
-              >
-                <Download className={`w-3.5 h-3.5 ${saving ? 'animate-spin' : ''}`} />
-                <span>{saving ? 'جارٍ الحفظ...' : 'حفظ بالمحلي'}</span>
               </button>
             </div>
           </div>

@@ -133,12 +133,12 @@ export const Sidebar: React.FC = () => {
   const builtInTools = [
     {
       id: 'crm',
-      name: 'منظومة المبيعات والـ CRM',
-      subtitle: 'صيد قنوات يوتيوب وصياغة عروض AI',
-      href: '/',
-      icon: Sparkles,
-      color: 'text-indigo-400',
-      badge: 'CRM',
+      name: 'أداة سحب داتا يوتيوب',
+      subtitle: 'استخراج القنوات والإيميلات ➔ Notion',
+      href: '/scraper',
+      icon: Youtube,
+      color: 'text-red-400',
+      badge: 'Leads',
     },
     {
       id: 'meeting-recorder',
@@ -314,29 +314,25 @@ export const Sidebar: React.FC = () => {
             أقسام الأداة الحالية
           </div>
 
-          {/* 1. If AI Sales CRM is active */}
+          {/* 1. If YouTube Leads Scraper is active */}
           {activeToolKey === 'crm' && (
             <div className="space-y-1">
               {[
-                { name: 'لوحة المؤشرات', href: '/', icon: LayoutDashboard },
-                { name: 'صائد عملاء يوتيوب', href: '/scraper', icon: Youtube },
-                { name: 'إدارة العملاء (CRM)', href: '/crm', icon: Users },
-                { name: 'استوديو عروض AI', href: '/pitches', icon: Sparkles },
-                { name: 'الاجتماعات والإحاطات', href: '/meetings', icon: CalendarCheck },
+                { name: 'سحب داتا يوتيوب ➔ Notion', href: '/scraper', icon: Youtube },
               ].map((item) => {
-                const isActive = pathname === item.href;
+                const isActive = pathname === item.href || pathname === '/';
                 const Icon = item.icon;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`flex items-center gap-2.5 px-3 py-2 rounded-lg font-medium text-xs transition-all ${
+                    className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl font-bold text-xs transition-all ${
                       isActive
-                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                        ? 'bg-red-600 text-white shadow-md shadow-red-600/30'
                         : 'text-slate-300 hover:text-white hover:bg-slate-900/80'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-red-400'}`} />
                     <span>{item.name}</span>
                   </Link>
                 );
