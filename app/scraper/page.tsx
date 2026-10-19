@@ -27,26 +27,14 @@ import {
   PlusCircle,
   ChevronDown,
   ChevronUp,
-} from 'lucide-react';
 import { YouTubeScrapeResult } from '@/types';
 import { formatNumber } from '@/lib/utils';
+import { DEFAULT_KEYWORD_CATEGORIES, getAllDefaultKeywords } from '@/lib/keywords';
 import Link from 'next/link';
-
-const NICHE_PRESETS = [
-  'تسويق إلكتروني',
-  'صناع محتوى',
-  'بودكاست',
-  'مونتاج وفيديو',
-  'عقارات واستثمار',
-  'تجارة إلكترونية',
-  'ذكاء اصطناعي',
-  'تطوير الذات',
-  'تقنية وبرمجة',
-];
 
 export default function ScraperPage() {
   const [query, setQuery] = useState('تسويق إلكتروني');
-  const [maxResults, setMaxResults] = useState(20);
+  const [maxResults, setMaxResults] = useState(30);
   const [minSubscribers, setMinSubscribers] = useState(1000);
   const [filterFaceless, setFilterFaceless] = useState(true);
   const [onlyArabic, setOnlyArabic] = useState(true);
@@ -58,6 +46,65 @@ export default function ScraperPage() {
   const [selectedChannels, setSelectedChannels] = useState<Record<string, boolean>>({});
   const [syncingNotion, setSyncingNotion] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Dynamic Keywords Hub State (Persistent in localStorage)
+  const [savedKeywords, setSavedKeywords] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('الكل');
+  const [newKeywordInput, setNewKeywordInput] = useState<string>('');
+  const [showKeywordsHub, setShowKeywordsHub] = useState<boolean>(true);
+
+  // Load saved keywords from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('crm_saved_keywords_pool');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSavedKeywords(parsed);
+          return;
+        }
+      }
+    } catch {
+      // fallback
+    }
+    setSavedKeywords(getAllDefaultKeywords());
+  }, []);
+
+  // Delete keyword after scraping it
+  const handleDeleteKeyword = (keywordToDelete: string) => {
+    const updated = savedKeywords.filter((k) => k !== keywordToDelete);
+    setSavedKeywords(updated);
+    try {
+      localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
+  // Add custom keyword
+  const handleAddKeyword = () => {
+    const trimmed = newKeywordInput.trim();
+    if (!trimmed || savedKeywords.includes(trimmed)) return;
+    const updated = [trimmed, ...savedKeywords];
+    setSavedKeywords(updated);
+    setNewKeywordInput('');
+    try {
+      localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
+  // Reset all default keywords
+  const handleResetKeywords = () => {
+    const defaults = getAllDefaultKeywords();
+    setSavedKeywords(defaults);
+    try {
+      localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(defaults));
+    } catch {
+      // ignore
+    }
+  };
 
   // Manual dismiss / remove channel from results list
   const handleRemoveChannel = (channelId: string) => {
@@ -613,6 +660,9 @@ export default function ScraperPage() {
                   <option value={20} className="bg-slate-900">20 نتيجة</option>
                   <option value={30} className="bg-slate-900">30 نتيجة</option>
                   <option value={50} className="bg-slate-900">50 نتيجة</option>
+                  <option value={100} className="bg-slate-900">100 نتيجة</option>
+                  <option value={200} className="bg-slate-900">200 نتيجة</option>
+                  <option value={300} className="bg-slate-900">300 نتيجة (سحب ضخم 🚀)</option>
                 </select>
               </div>
 
@@ -635,38 +685,16 @@ export default function ScraperPage() {
               <button
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-6 py-3.5 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all flex-shrink-0 active:scale-95 cursor-pointer"
+                className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-7 py-3.5 rounded-xl text-sm font-black flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all flex-shrink-0 active:scale-95 cursor-pointer"
               >
                 <Search className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>{loading ? 'جارٍ البحث والفلترة...' : 'بدء فحص وسحب القنوات'}</span>
+                <span>{loading ? 'جارٍ فحص وسحب القنوات...' : `سحب حتى ${maxResults} قناة 🚀`}</span>
               </button>
             </div>
           </div>
 
-          {/* Faceless Filter Toggle & Presets */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1 border-t border-slate-800/80">
-            {/* Quick Niche Presets (clicking only fills the input, does NOT trigger search) */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              <span className="text-xs text-slate-400 flex items-center gap-1 flex-shrink-0">
-                <Filter className="w-3.5 h-3.5" />
-                <span>المجالات:</span>
-              </span>
-              {NICHE_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  onClick={() => setQuery(preset)}
-                  className={`text-xs px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 font-medium ${
-                    query === preset
-                      ? 'bg-red-600/20 text-red-300 border-red-500/40 font-bold'
-                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
-                  }`}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-
+          {/* Filters Row: Arabic + Faceless + Strict */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
             <div className="flex flex-wrap items-center gap-2">
               {/* Only Arabic Toggle */}
               <label className="flex items-center gap-2 cursor-pointer select-none bg-slate-950/80 border border-slate-800 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white transition-colors flex-shrink-0">
@@ -702,7 +730,144 @@ export default function ScraperPage() {
                 <span className="text-purple-400 font-bold">🎯 أسماء أشخاص حقيقية فقط</span>
               </label>
             </div>
+
+            {/* Toggle Keywords Hub Button */}
+            <button
+              type="button"
+              onClick={() => setShowKeywordsHub(!showKeywordsHub)}
+              className="text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1.5 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-bold">بنك الكلمات المفتاحية ({savedKeywords.length} كلمة)</span>
+              {showKeywordsHub ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
           </div>
+
+          {/* 💎 Interactive Dynamic Keywords Hub */}
+          {showKeywordsHub && (
+            <div className="bg-slate-950/90 border border-slate-800/90 rounded-2xl p-4 space-y-3.5 shadow-xl animate-fade-in">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-black text-white">
+                      بنك كلمات البحث المستهدفة (اضغط للبحث • احذف ✕ الكلمة بعد الانتهاء منها)
+                    </h5>
+                    <p className="text-[11px] text-slate-400">
+                      اختر أي كلمة لبدء السحب، وبمجرد استخراج كل قنواتها يمكنك حذفها حتى لا تكررها لاحقاً.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetKeywords}
+                    className="text-[11px] font-semibold text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition-colors flex items-center gap-1 cursor-pointer"
+                    title="إعادة تحميل جميع الكلمات الافتراضية"
+                  >
+                    <RefreshCw className="w-3 h-3 text-cyan-400" />
+                    <span>استعادة القائمة الأصلية</span>
+                  </button>
+                  <span className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold border border-emerald-500/20">
+                    {savedKeywords.length} كلمة متاحة
+                  </span>
+                </div>
+              </div>
+
+              {/* Add New Custom Keyword Bar */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newKeywordInput}
+                  onChange={(e) => setNewKeywordInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleAddKeyword()}
+                  placeholder="أضف كلمة بحث مخصصة جديدة لبنك الكلمات..."
+                  className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddKeyword}
+                  disabled={!newKeywordInput.trim()}
+                  className="bg-amber-600 hover:bg-amber-500 disabled:opacity-40 text-black font-black text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إضافة للبنك</span>
+                </button>
+              </div>
+
+              {/* Category Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory('الكل')}
+                  className={`text-[11px] px-3 py-1 rounded-lg font-bold flex-shrink-0 transition-colors ${
+                    selectedCategory === 'الكل'
+                      ? 'bg-amber-500 text-black shadow'
+                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  الكل ({savedKeywords.length})
+                </button>
+                {DEFAULT_KEYWORD_CATEGORIES.map((cat) => (
+                  <button
+                    key={cat.category}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.category)}
+                    className={`text-[11px] px-3 py-1 rounded-lg font-bold flex-shrink-0 transition-colors ${
+                      selectedCategory === cat.category
+                        ? 'bg-amber-500 text-black shadow'
+                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {cat.category}
+                  </button>
+                ))}
+              </div>
+
+              {/* Keywords Pills List */}
+              <div className="flex flex-wrap gap-2 max-h-56 overflow-y-auto p-1 pr-2">
+                {savedKeywords
+                  .filter((kw) => {
+                    if (selectedCategory === 'الكل') return true;
+                    const catObj = DEFAULT_KEYWORD_CATEGORIES.find((c) => c.category === selectedCategory);
+                    return catObj ? catObj.keywords.includes(kw) : true;
+                  })
+                  .map((kw) => {
+                    const isCurrent = query === kw;
+                    return (
+                      <div
+                        key={kw}
+                        className={`group text-xs rounded-xl pl-1 pr-3 py-1.5 flex items-center gap-2 border transition-all ${
+                          isCurrent
+                            ? 'bg-red-600/20 text-red-200 border-red-500/50 font-bold shadow-md shadow-red-600/10'
+                            : 'bg-slate-900/90 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setQuery(kw)}
+                          className="cursor-pointer text-right flex-1"
+                          title="اضغط لاختيار هذه الكلمة والبحث بها"
+                        >
+                          {kw}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteKeyword(kw)}
+                          className="opacity-40 group-hover:opacity-100 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 p-1 rounded-lg transition-all cursor-pointer"
+                          title="حذف هذه الكلمة من القائمة (بعد الانتهاء من سحب قنواتها)"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

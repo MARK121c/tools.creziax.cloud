@@ -266,8 +266,8 @@ export async function searchYouTubeChannels(
   const processedChannelIds = new Set<string>();
   let nextPageToken: string | null = initialPageToken || null;
   let pageIndex = 0;
-  // Scan up to 5 pages (up to 250 raw channels) to fulfill the requested target channels count
-  const maxPagesToScan = Math.min(Math.max(Math.ceil(maxResults / 3), 3), 6);
+  // Scan up to 25 pages (up to 1,250 raw videos/channels) to fulfill large requested targets (e.g. 100, 200, 300)
+  const maxPagesToScan = Math.min(Math.max(Math.ceil(maxResults / 10), 4), 25);
 
   try {
     while (results.length < maxResults && pageIndex < maxPagesToScan) {
