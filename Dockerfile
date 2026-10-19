@@ -19,6 +19,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV DATABASE_URL="file:/app/prisma/dev.db"
+ENV NODE_OPTIONS="--max-old-space-size=2048"
 
 # Ensure public and prisma exist and generate schema
 RUN mkdir -p /app/public /app/prisma
