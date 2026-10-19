@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
     const onlyArabic = searchParams.get('onlyArabic') !== 'false';
     const strictNameOnly = searchParams.get('strictNameOnly') === 'true';
     const pageToken = searchParams.get('pageToken') || null;
+    const preferredKey = searchParams.get('preferredKey') || null;
 
     const { channels, stats, nextPageToken } = await searchYouTubeChannels(
       query,
@@ -22,7 +23,8 @@ export async function GET(req: NextRequest) {
       filterFaceless,
       onlyArabic,
       strictNameOnly,
-      pageToken
+      pageToken,
+      preferredKey
     );
     return NextResponse.json({ channels, stats, query, nextPageToken });
   } catch (error: any) {

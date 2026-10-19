@@ -1,6 +1,6 @@
 import { prisma } from './prisma';
 import { YouTubeScrapeResult } from '@/types';
-import { getYoutubeApiKeys } from './token-pool';
+import { getYoutubeApiKeys, getActiveYoutubeApiKey } from './token-pool';
 
 const EMAIL_REGEX = /([a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+)/gi;
 
@@ -187,10 +187,19 @@ export function isPersonalCreatorChannel(
 }
 
 /**
- * Executes a YouTube API request with automatic token rotation upon hitting quota limits
+ * Executes a YouTube API request with automatic token rotation upon hitting quota limits, prioritizing a preferred key if specified
  */
-async function fetchYouTubeWithFailover(urlBuilder: (apiKey: string) => string): Promise<{ data: any; key: string }> {
-  const keys = await getYoutubeApiKeys();
+async function fetchYouTubeWithFailover(
+  urlBuilder: (apiKey: string) => string,
+  preferredKey?: string | null
+): Promise<{ data: any; key: string }> {
+  let keys = await getYoutubeApiKeys();
+  const activeKey = preferredKey || (await getActiveYoutubeApiKey());
+
+  if (activeKey && keys.includes(activeKey)) {
+    keys = [activeKey, ...keys.filter((k) => k !== activeKey)];
+  }
+
   let lastError: any = null;
 
   for (let i = 0; i < keys.length; i++) {
@@ -246,7 +255,8 @@ export async function searchYouTubeChannels(
   filterFaceless: boolean = true,
   onlyArabic: boolean = true,
   strictNameOnly: boolean = false,
-  initialPageToken?: string | null
+  initialPageToken?: string | null,
+  preferredKey?: string | null
 ): Promise<{ channels: YouTubeScrapeResult[]; stats: ScrapeStats; nextPageToken: string | null }> {
   const keys = await getYoutubeApiKeys();
   if (keys.length === 0) {
@@ -278,10 +288,12 @@ export async function searchYouTubeChannels(
       const langParam = onlyArabic ? '&relevanceLanguage=ar' : '';
       
       // We search for videos (which is the goldmine for active human creators) to guarantee high volume
-      const { data: searchData } = await fetchYouTubeWithFailover((key) =>
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(
-          query
-        )}&maxResults=50${pageParam}${langParam}&key=${key}`
+      const { data: searchData } = await fetchYouTubeWithFailover(
+        (key) =>
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(
+            query
+          )}&maxResults=50${pageParam}${langParam}&key=${key}`,
+        preferredKey
       );
 
       nextPageToken = searchData.nextPageToken || null;
@@ -308,10 +320,12 @@ export async function searchYouTubeChannels(
       const allChannelDetails: any[] = [];
 
       for (const chunk of idChunks) {
-        const { data: channelsData } = await fetchYouTubeWithFailover((key) =>
-          `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${chunk.join(
-            ','
-          )}&key=${key}`
+        const { data: channelsData } = await fetchYouTubeWithFailover(
+          (key) =>
+            `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${chunk.join(
+              ','
+            )}&key=${key}`,
+          preferredKey
         );
         if (channelsData.items && Array.isArray(channelsData.items)) {
           allChannelDetails.push(...channelsData.items);
@@ -359,8 +373,10 @@ export async function searchYouTubeChannels(
         try {
           const uploadsPlaylistId = ch.contentDetails?.relatedPlaylists?.uploads;
           if (uploadsPlaylistId) {
-            const { data: plData } = await fetchYouTubeWithFailover((key) =>
-              `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=3&key=${key}`
+            const { data: plData } = await fetchYouTubeWithFailover(
+              (key) =>
+                `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=3&key=${key}`,
+              preferredKey
             );
             for (const item of plData.items || []) {
               const vTitle = item.snippet?.title;

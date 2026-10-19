@@ -3,6 +3,8 @@ import {
   getYoutubeApiKeys,
   addYoutubeApiKey,
   removeYoutubeApiKey,
+  getActiveYoutubeApiKey,
+  setActiveYoutubeApiKey,
   DEFAULT_YOUTUBE_API_KEY,
 } from '@/lib/token-pool';
 
@@ -16,16 +18,19 @@ function maskKey(key: string): string {
 export async function GET() {
   try {
     const keys = await getYoutubeApiKeys();
+    const activeKey = await getActiveYoutubeApiKey();
     const formatted = keys.map((k, index) => ({
       index: index + 1,
       key: k,
       masked: maskKey(k),
       isDefault: k === DEFAULT_YOUTUBE_API_KEY,
+      isActive: k === (activeKey || keys[0]),
     }));
 
     return NextResponse.json({
       success: true,
       keys: formatted,
+      activeKey: activeKey || keys[0],
       totalKeys: keys.length,
     });
   } catch (err: any) {
@@ -47,20 +52,26 @@ export async function POST(req: NextRequest) {
       updatedKeys = await addYoutubeApiKey(key);
     } else if (action === 'delete') {
       updatedKeys = await removeYoutubeApiKey(key);
+    } else if (action === 'set_active') {
+      await setActiveYoutubeApiKey(key);
+      updatedKeys = await getYoutubeApiKeys();
     } else {
       return NextResponse.json({ success: false, error: 'إجراء غير معروف' }, { status: 400 });
     }
 
+    const activeKey = await getActiveYoutubeApiKey();
     const formatted = updatedKeys.map((k, index) => ({
       index: index + 1,
       key: k,
       masked: maskKey(k),
       isDefault: k === DEFAULT_YOUTUBE_API_KEY,
+      isActive: k === (activeKey || updatedKeys[0]),
     }));
 
     return NextResponse.json({
       success: true,
       keys: formatted,
+      activeKey: activeKey || updatedKeys[0],
       totalKeys: updatedKeys.length,
     });
   } catch (err: any) {

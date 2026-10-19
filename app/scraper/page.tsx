@@ -27,6 +27,8 @@ import {
   PlusCircle,
   ChevronDown,
   ChevronUp,
+  Zap,
+} from 'lucide-react';
 import { YouTubeScrapeResult } from '@/types';
 import { formatNumber } from '@/lib/utils';
 import { DEFAULT_KEYWORD_CATEGORIES, getAllDefaultKeywords } from '@/lib/keywords';
@@ -143,7 +145,8 @@ export default function ScraperPage() {
   };
 
   // Google API Token Pool state
-  const [tokenPool, setTokenPool] = useState<Array<{ index: number; key: string; masked: string; isDefault: boolean }>>([]);
+  const [tokenPool, setTokenPool] = useState<Array<{ index: number; key: string; masked: string; isDefault: boolean; isActive?: boolean }>>([]);
+  const [selectedTokenKey, setSelectedTokenKey] = useState<string>('auto');
   const [showTokenManager, setShowTokenManager] = useState(false);
   const [newTokenInput, setNewTokenInput] = useState('');
   const [tokenLoading, setTokenLoading] = useState(false);
@@ -155,6 +158,9 @@ export default function ScraperPage() {
       const data = await res.json();
       if (data.success) {
         setTokenPool(data.keys || []);
+        if (data.activeKey) {
+          setSelectedTokenKey(data.activeKey);
+        }
       }
     } catch {
       // ignore
@@ -165,6 +171,27 @@ export default function ScraperPage() {
     fetchNotionCount();
     fetchTokens();
   }, []);
+
+  const handleSetActiveToken = async (key: string) => {
+    setTokenLoading(true);
+    setTokenMessage(null);
+    try {
+      const res = await fetch('/api/scraper/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'set_active', key }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'فشل تفعيل المفتاح');
+      setTokenPool(data.keys || []);
+      setSelectedTokenKey(data.activeKey || key);
+      setTokenMessage({ type: 'success', text: '⚡ تم تعيين هذا المفتاح ليكون المفتاح الأساسي للسحب بنجاح!' });
+    } catch (err: any) {
+      setTokenMessage({ type: 'error', text: err.message || 'حدث خطأ أثناء تحديد المفتاح' });
+    } finally {
+      setTokenLoading(false);
+    }
+  };
 
   const handleAddToken = async () => {
     if (!newTokenInput.trim()) return;
@@ -217,8 +244,9 @@ export default function ScraperPage() {
     setSelectedChannels({});
     setNextPageToken(null);
     try {
+      const keyParam = selectedTokenKey && selectedTokenKey !== 'auto' ? `&preferredKey=${encodeURIComponent(selectedTokenKey)}` : '';
       const res = await fetch(
-        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}&strictNameOnly=${strictNameOnly}`
+        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}&strictNameOnly=${strictNameOnly}${keyParam}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل البحث في يوتيوب');
@@ -249,10 +277,11 @@ export default function ScraperPage() {
 
     setLoadingMore(true);
     try {
+      const keyParam = selectedTokenKey && selectedTokenKey !== 'auto' ? `&preferredKey=${encodeURIComponent(selectedTokenKey)}` : '';
       const res = await fetch(
         `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}&strictNameOnly=${strictNameOnly}&pageToken=${encodeURIComponent(
           nextPageToken
-        )}`
+        )}${keyParam}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل جلب قنوات إضافية');
@@ -545,34 +574,70 @@ export default function ScraperPage() {
             <div className="space-y-2">
               <span className="text-xs font-bold text-slate-300 block">المفاتيح المسجلة حالياً للتناوب:</span>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-                {tokenPool.map((t) => (
-                  <div
-                    key={t.key}
-                    className="flex items-center justify-between p-3 rounded-xl bg-slate-900 border border-slate-800"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold flex items-center justify-center">
-                        #{t.index}
-                      </span>
-                      <code className="text-xs font-mono text-emerald-400 font-bold">{t.masked}</code>
-                      {t.isDefault && (
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">
-                          افتراضي
+                {tokenPool.map((t) => {
+                  const isCurrentActive = t.isActive || selectedTokenKey === t.key;
+                  return (
+                    <div
+                      key={t.key}
+                      className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-xl border gap-2.5 transition-all ${
+                        isCurrentActive
+                          ? 'bg-amber-500/10 border-amber-500/40 ring-1 ring-amber-500/20'
+                          : 'bg-slate-900 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className={`w-6 h-6 rounded-lg text-xs font-bold flex items-center justify-center ${
+                            isCurrentActive
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-slate-800 text-slate-300'
+                          }`}
+                        >
+                          #{t.index}
                         </span>
-                      )}
+                        <code className="text-xs font-mono text-emerald-400 font-bold">{t.masked}</code>
+                        {t.isDefault && (
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold">
+                            افتراضي
+                          </span>
+                        )}
+                        {isCurrentActive && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-amber-400 fill-amber-400" /> المفتاح النشط حالياً
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        {!isCurrentActive ? (
+                          <button
+                            type="button"
+                            onClick={() => handleSetActiveToken(t.key)}
+                            disabled={tokenLoading}
+                            className="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 border border-slate-700 hover:border-amber-500/30 font-semibold transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            <Zap className="w-3 h-3" />
+                            <span>تحديد للاستخدام</span>
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-amber-400/80 font-medium">قيد الاستخدام الأساسي ⚡</span>
+                        )}
+
+                        {tokenPool.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteToken(t.key)}
+                            disabled={tokenLoading}
+                            title="حذف المفتاح من المجموعة"
+                            className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    {tokenPool.length > 1 && (
-                      <button
-                        onClick={() => handleDeleteToken(t.key)}
-                        disabled={tokenLoading}
-                        title="حذف المفتاح من المجموعة"
-                        className="text-slate-400 hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -680,6 +745,33 @@ export default function ScraperPage() {
                   <option value={50000} className="bg-slate-900">50,000+ مشترك</option>
                 </select>
               </div>
+
+              {/* Active Token Selector */}
+              {tokenPool.length > 0 && (
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2">
+                  <Key className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[11px] text-slate-400 font-medium">المفتاح:</span>
+                  <select
+                    value={selectedTokenKey}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedTokenKey(val);
+                      if (val !== 'auto') {
+                        handleSetActiveToken(val);
+                      }
+                    }}
+                    className="bg-transparent text-xs text-amber-400 focus:outline-none font-semibold cursor-pointer max-w-[130px] truncate"
+                    title="اختر المفتاح المراد استخدامه أولاً في السحب"
+                  >
+                    <option value="auto" className="bg-slate-900 text-white">🔄 تلقائي (تناوب الكل)</option>
+                    {tokenPool.map((t) => (
+                      <option key={t.key} value={t.key} className="bg-slate-900 text-white">
+                        #{t.index} ({t.masked}) {t.isActive ? '⚡ نشط' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Explicit Search Button - ONLY runs when clicked */}
               <button

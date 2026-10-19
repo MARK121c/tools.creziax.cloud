@@ -45,3 +45,21 @@ export async function removeYoutubeApiKey(keyToRemove: string): Promise<string[]
   const updated = current.filter((k) => k !== keyToRemove.trim());
   return await saveYoutubeApiKeys(updated);
 }
+
+export async function getActiveYoutubeApiKey(): Promise<string | null> {
+  try {
+    const active = await getSetting('active_youtube_api_key');
+    if (active && active.trim()) {
+      return active.trim();
+    }
+  } catch (err) {
+    console.error('Error reading active_youtube_api_key:', err);
+  }
+  return null;
+}
+
+export async function setActiveYoutubeApiKey(key: string): Promise<string> {
+  const trimmed = key.trim();
+  await setSetting('active_youtube_api_key', trimmed, 'Currently Selected Active YouTube API Key');
+  return trimmed;
+}
