@@ -39,20 +39,16 @@ export async function pushLeadToNotion(lead: NotionLeadPayload, targetNiche: str
   if (lead.subscribers) contactParts.push(`👥 المشتركين: ${Number(lead.subscribers).toLocaleString()}`);
 
   const contactText = contactParts.length > 0 ? contactParts.join('\n') : lead.channelUrl || '';
-  const nowIso = new Date().toISOString();
 
+  // Matching exact Notion DB schema:
+  // - "بيانات التواصل" is the title property
+  // - "اسم العميل " is rich_text (contains trailing space in Notion DB)
+  // - "نتش العميل" is rich_text
+  // - "حالة العميل" is status (initial option: "العرض قيد الانشاء")
+  // - "تاريخ الإضافة" is auto-managed created_time (read-only)
   const properties: Record<string, any> = {
-    'اسم العميل': {
-      title: [
-        {
-          text: {
-            content: (lead.channelName || 'عميل بدون اسم').slice(0, 100),
-          },
-        },
-      ],
-    },
     'بيانات التواصل': {
-      rich_text: [
+      title: [
         {
           text: {
             content: contactText.slice(0, 2000),
@@ -60,19 +56,27 @@ export async function pushLeadToNotion(lead: NotionLeadPayload, targetNiche: str
         },
       ],
     },
+    'اسم العميل ': {
+      rich_text: [
+        {
+          text: {
+            content: (lead.channelName || 'عميل بدون اسم').slice(0, 100),
+          },
+        },
+      ],
+    },
     'نتش العميل': {
-      select: {
-        name: (lead.niche || targetNiche || 'عام').slice(0, 100),
-      },
+      rich_text: [
+        {
+          text: {
+            content: (lead.niche || targetNiche || 'عام').slice(0, 100),
+          },
+        },
+      ],
     },
     'حالة العميل': {
       status: {
-        name: 'جديد',
-      },
-    },
-    'تاريخ الإضافة': {
-      date: {
-        start: nowIso,
+        name: 'العرض قيد الانشاء',
       },
     },
   };
@@ -94,17 +98,28 @@ export async function pushLeadToNotion(lead: NotionLeadPayload, targetNiche: str
     body: JSON.stringify(payload),
   });
 
-  // Fallback if status property is actually a select in the user's Notion table
+  // Fallback in case "اسم العميل " was renamed to "اسم العميل" without trailing space
   if (res.status === 400) {
     const errorBody = await res.text();
-    if (errorBody.toLowerCase().includes('status')) {
-      properties['حالة العميل'] = { select: { name: 'جديد' } };
+    if (errorBody.includes('اسم العميل')) {
+      delete properties['اسم العميل '];
+      properties['اسم العميل'] = {
+        rich_text: [
+          {
+            text: {
+              content: (lead.channelName || 'عميل بدون اسم').slice(0, 100),
+            },
+          },
+        ],
+      };
       payload.properties = properties;
       res = await fetch('https://api.notion.com/v1/pages', {
         method: 'POST',
         headers,
         body: JSON.stringify(payload),
       });
+    } else {
+      throw new Error(`Notion API Error (400): ${errorBody}`);
     }
   }
 
@@ -138,7 +153,12 @@ export async function getExistingNotionLeadNames(): Promise<Set<string>> {
 
     const data = await res.json();
     for (const page of data.results || []) {
-      const titleProp = page.properties?.['اسم العميل']?.title;
+      const nameProp = page.properties?.['اسم العميل ']?.rich_text || page.properties?.['اسم العميل']?.rich_text;
+      if (Array.isArray(nameProp) && nameProp.length > 0) {
+        const text = nameProp[0]?.text?.content?.trim()?.toLowerCase();
+        if (text) existing.add(text);
+      }
+      const titleProp = page.properties?.['بيانات التواصل']?.title;
       if (Array.isArray(titleProp) && titleProp.length > 0) {
         const text = titleProp[0]?.text?.content?.trim()?.toLowerCase();
         if (text) existing.add(text);

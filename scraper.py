@@ -24,7 +24,7 @@ import os
 # ==============================================================================
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY") or base64.b64decode("QUl6YVN5Q09ER3l1ZkdqOFQ5MDd6SHY2bWdUNy05eFhNRFFsUzJF").decode("utf-8")
 NOTION_TOKEN = os.getenv("NOTION_TOKEN") or base64.b64decode("bnRuXzM2MzQ3MDE1Nzc0OWlNZEIxWGtzazJ3bHhPeTV3bTQ2dk5jZmJxVEdUWmw2YVI=").decode("utf-8")
-NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID") or "3fe87673725e80c484affadee8f672d1"
+NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID") or "26e87673725e82e1ace2013a9d100c99"
 
 NOTION_HEADERS = {
     "Authorization": f"Bearer {NOTION_TOKEN}",
@@ -108,11 +108,18 @@ def get_existing_notion_channel_titles():
             data = json.loads(response_text)
             for page in data.get("results", []):
                 props = page.get("properties", {})
-                title_prop = props.get("اسم العميل", {}).get("title", [])
-                if title_prop:
-                    title_text = title_prop[0].get("text", {}).get("content", "").strip()
-                    if title_text:
-                        existing_titles.add(title_text.lower())
+                # فحص اسم العميل (rich_text)
+                name_prop = props.get("اسم العميل ", {}).get("rich_text", []) or props.get("اسم العميل", {}).get("rich_text", [])
+                if name_prop:
+                    name_text = name_prop[0].get("text", {}).get("content", "").strip()
+                    if name_text:
+                        existing_titles.add(name_text.lower())
+                # فحص بيانات التواصل (title)
+                contact_prop = props.get("بيانات التواصل", {}).get("title", [])
+                if contact_prop:
+                    contact_text = contact_prop[0].get("text", {}).get("content", "").strip()
+                    if contact_text:
+                        existing_titles.add(contact_text.lower())
 
             has_more = data.get("has_more", False)
             next_cursor = data.get("next_cursor")
@@ -127,7 +134,7 @@ def get_existing_notion_channel_titles():
 # ==============================================================================
 def push_lead_to_notion(lead: dict, target_niche: str):
     """
-    يرسل العميل كصف جديد (Page) داخل جدول نوشن 'العملاء - متابعة CRM'
+    يرسل العميل كصف جديد (Page) داخل جدول نوشن 'CRM العملاء - متابعة'
     """
     url = "https://api.notion.com/v1/pages"
 
@@ -142,20 +149,11 @@ def push_lead_to_notion(lead: dict, target_niche: str):
         contact_parts.append(f"👥 المشتركين: {lead['subscribers']:,}")
 
     contact_text = "\n".join(contact_parts) if contact_parts else lead.get("channel_url", "")
-    now_iso = datetime.now().isoformat()
 
+    # مطابقة أعمدة جدول Notion بدقة
     properties = {
-        "اسم العميل": {
-            "title": [
-                {
-                    "text": {
-                        "content": lead.get("channel_name", "عميل بدون اسم")[:100]
-                    }
-                }
-            ]
-        },
         "بيانات التواصل": {
-            "rich_text": [
+            "title": [
                 {
                     "text": {
                         "content": contact_text[:2000]
@@ -163,19 +161,27 @@ def push_lead_to_notion(lead: dict, target_niche: str):
                 }
             ]
         },
+        "اسم العميل ": {
+            "rich_text": [
+                {
+                    "text": {
+                        "content": lead.get("channel_name", "عميل بدون اسم")[:100]
+                    }
+                }
+            ]
+        },
         "نتش العميل": {
-            "select": {
-                "name": target_niche[:100]
-            }
+            "rich_text": [
+                {
+                    "text": {
+                        "content": target_niche[:100]
+                    }
+                }
+            ]
         },
         "حالة العميل": {
             "status": {
-                "name": "جديد"
-            }
-        },
-        "تاريخ الإضافة": {
-            "date": {
-                "start": now_iso
+                "name": "العرض قيد الانشاء"
             }
         }
     }
@@ -187,9 +193,12 @@ def push_lead_to_notion(lead: dict, target_niche: str):
 
     status, resp_text = http_request(url, method="POST", headers=NOTION_HEADERS, data=payload)
 
-    # معالجة ذكية إذا كان عمود 'حالة العميل' في نوشن نوعه Select وليس Status
-    if status == 400 and "status" in resp_text.lower():
-        properties["حالة العميل"] = {"select": {"name": "جديد"}}
+    # معالجة احتياطية في حال كان اسم العمود بدون مسافة إضافية
+    if status == 400 and "اسم العميل" in resp_text:
+        del properties["اسم العميل "]
+        properties["اسم العميل"] = {
+            "rich_text": [{"text": {"content": lead.get("channel_name", "عميل بدون اسم")[:100]}}]
+        }
         payload["properties"] = properties
         status, resp_text = http_request(url, method="POST", headers=NOTION_HEADERS, data=payload)
 

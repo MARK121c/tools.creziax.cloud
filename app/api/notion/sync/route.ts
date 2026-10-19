@@ -33,6 +33,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    if (syncedCount === 0 && errors.length > 0) {
+      return NextResponse.json({
+        success: false,
+        error: `تعذر إرسال العملاء لنوشن: ${errors[0]}`,
+        syncedCount: 0,
+        skippedCount,
+        errorsCount: errors.length,
+        errors: errors.slice(0, 5),
+      }, { status: 400 });
+    }
+
     return NextResponse.json({
       success: true,
       syncedCount,
