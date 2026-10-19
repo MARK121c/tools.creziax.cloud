@@ -338,10 +338,10 @@ def search_youtube_channels(keyword: str, target_count: int, existing_channels: 
     while len(collected_leads) < target_count:
         params = {
             "part": "snippet",
-            "type": "channel",
+            "type": "video",
             "q": keyword,
             "relevanceLanguage": "ar",
-            "maxResults": min(50, max(20, (target_count - len(collected_leads)) * 3)),
+            "maxResults": 50,
             "key": YOUTUBE_API_KEY,
         }
         if next_page_token:

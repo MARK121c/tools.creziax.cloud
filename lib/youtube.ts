@@ -273,12 +273,13 @@ export async function searchYouTubeChannels(
     while (results.length < maxResults && pageIndex < maxPagesToScan) {
       pageIndex++;
 
-      // 1. Search for channels with automatic token failover + Arabic language priority
+      // 1. Search YouTube Videos & Channels with automatic token failover + Arabic language priority
       const pageParam = nextPageToken ? `&pageToken=${encodeURIComponent(nextPageToken)}` : '';
       const langParam = onlyArabic ? '&relevanceLanguage=ar' : '';
       
+      // We search for videos (which is the goldmine for active human creators) to guarantee high volume
       const { data: searchData } = await fetchYouTubeWithFailover((key) =>
-        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(
           query
         )}&maxResults=50${pageParam}${langParam}&key=${key}`
       );
@@ -287,18 +288,19 @@ export async function searchYouTubeChannels(
       const searchItems = searchData.items || [];
       if (searchItems.length === 0) break;
 
-      // Extract valid channel IDs (strictly starting with UC, non-duplicate, safe string)
-      const rawIds = searchItems
-        .map((it: any) => it.snippet?.channelId)
-        .filter((id: any): id is string => typeof id === 'string' && id.startsWith('UC') && !processedChannelIds.has(id));
+      // Extract unique channel IDs from active creators
+      const rawIds: string[] = [];
+      for (const it of searchItems) {
+        const cid = it.snippet?.channelId;
+        if (typeof cid === 'string' && cid.startsWith('UC') && !processedChannelIds.has(cid)) {
+          rawIds.push(cid);
+          processedChannelIds.add(cid);
+        }
+      }
 
       if (rawIds.length === 0) {
         if (!nextPageToken) break;
         continue;
-      }
-
-      for (const id of rawIds) {
-        processedChannelIds.add(id);
       }
 
       // 2. Fetch channel details in safe chunks of 50 max (avoids 'The request specifies an invalid filter parameter' 400 error)
