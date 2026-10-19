@@ -1,6 +1,6 @@
 // Embedded default credentials with environment override
 const DEFAULT_NOTION_TOKEN = Buffer.from('bnRuXzM2MzQ3MDE1Nzc0OWlNZEIxWGtzazJ3bHhPeTV3bTQ2dk5jZmJxVEdUWmw2YVI=', 'base64').toString('utf-8');
-const DEFAULT_NOTION_DB_ID = '3fe87673725e80c484affadee8f672d1';
+const DEFAULT_NOTION_DB_ID = '26e87673725e82e1ace2013a9d100c99';
 
 export async function getNotionConfig() {
   const token = process.env.NOTION_TOKEN || DEFAULT_NOTION_TOKEN;
