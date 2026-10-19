@@ -15,33 +15,38 @@ import {
   Plus,
   ExternalLink,
   Sparkles,
+  Database,
+  CloudUpload,
+  RefreshCw,
+  Share2,
 } from 'lucide-react';
 import { YouTubeScrapeResult } from '@/types';
 import { formatNumber } from '@/lib/utils';
 import Link from 'next/link';
 
 const NICHE_PRESETS = [
-  'مونتاج فيديو',
+  'تسويق إلكتروني',
   'صناع محتوى',
   'بودكاست',
-  'ريادة أعمال',
+  'مونتاج وفيديو',
+  'عقارات واستثمار',
+  'تجارة إلكترونية',
   'ذكاء اصطناعي',
-  'فيتنس وصحة',
   'تطوير الذات',
   'تقنية وبرمجة',
-  'تعليم لغات',
 ];
 
 export default function ScraperPage() {
-  const [query, setQuery] = useState('مونتاج فيديو');
-  const [maxResults, setMaxResults] = useState(10);
+  const [query, setQuery] = useState('تسويق إلكتروني');
+  const [maxResults, setMaxResults] = useState(20);
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<YouTubeScrapeResult[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [syncingNotion, setSyncingNotion] = useState(false);
   const [saveStatus, setSaveStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Search YouTube
+  // Search YouTube via live YouTube Data API
   const handleSearch = async (targetQuery?: string) => {
     const q = targetQuery || query;
     if (!q.trim()) return;
@@ -52,7 +57,7 @@ export default function ScraperPage() {
     try {
       const res = await fetch(`/api/scraper/youtube?query=${encodeURIComponent(q)}&maxResults=${maxResults}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'فشل البحث');
+      if (!res.ok) throw new Error(data.error || 'فشل البحث في يوتيوب');
       setResults(data.channels || []);
 
       // Auto-select non-duplicates
@@ -84,7 +89,56 @@ export default function ScraperPage() {
     setSelectedChannels(updated);
   };
 
-  // Save selected leads to CRM SQLite database
+  // Sync selected leads directly to Notion CRM ("العملاء - متابعة CRM")
+  const handleSyncToNotion = async () => {
+    const leadsToSync = results.filter((r) => selectedChannels[r.channelId]);
+    if (leadsToSync.length === 0) {
+      setSaveStatus({ type: 'error', message: 'يرجى تحديد قناة واحدة على الأقل للإرسال لنوشن' });
+      return;
+    }
+
+    setSyncingNotion(true);
+    setSaveStatus(null);
+
+    try {
+      const res = await fetch('/api/notion/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          leads: leadsToSync.map((ch) => ({
+            channelName: ch.channelName,
+            channelUrl: ch.channelUrl,
+            email: ch.email,
+            subscribers: ch.subscriberCount,
+            niche: query,
+            description: ch.description,
+          })),
+          niche: query,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'فشلت المزامنة مع Notion');
+      }
+
+      setSaveStatus({
+        type: 'success',
+        message: `🌟 تم إرسال ${data.syncedCount} عميل بنجاح إلى جدول Notion ("العملاء - متابعة CRM")! (تم تخطي ${data.skippedCount} مكرر)`,
+      });
+    } catch (err: any) {
+      setSaveStatus({
+        type: 'error',
+        message: err.message.includes('404')
+          ? '⚠️ يرجى التأكد من ربط التكامل Mark_Personal_OS بصفحة جدول نوشن عبر (...) ثم Connections'
+          : `خطأ في ربط Notion: ${err.message}`,
+      });
+    } finally {
+      setSyncingNotion(false);
+    }
+  };
+
+  // Save selected leads to local CRM SQLite database
   const handleSaveToCRM = async () => {
     const leadsToSave = results.filter((r) => selectedChannels[r.channelId]);
     if (leadsToSave.length === 0) {
@@ -128,30 +182,36 @@ export default function ScraperPage() {
   const selectedCount = Object.values(selectedChannels).filter(Boolean).length;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
       {/* Header Section */}
-      <div className="glass-panel p-6 border border-slate-800">
+      <div className="glass-panel p-6 border border-slate-800 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-semibold mb-2">
-              <Youtube className="w-3.5 h-3.5" />
-              <span>YouTube Data API v3 Scraper</span>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-semibold">
+                <Youtube className="w-3.5 h-3.5" />
+                <span>YouTube Data API v3 Live</span>
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-semibold">
+                <Database className="w-3.5 h-3.5" />
+                <span>Notion CRM Connected</span>
+              </span>
             </div>
-            <h1 className="text-2xl font-black text-white">
-              صائد العملاء وصناع المحتوى من يوتيوب
+            <h1 className="text-2xl md:text-3xl font-black text-white">
+              صائد وصناع محتوى يوتيوب المباشر ➔ Notion CRM
             </h1>
-            <p className="text-xs text-slate-300 mt-1">
-              ابحث عن القنوات النشطة في أي نيش، استخرج بيانات المشتركين والإيميلات، وأضفهم مباشرة لجدول الـ CRM.
+            <p className="text-xs md:text-sm text-slate-300 mt-1">
+              ابحث عن القنوات وصناع المحتوى، استخرج الإيميلات وروابط التواصل، وأرسلهم بنقرة واحدة لجدول Notion الخاص بشركتك.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <Link
               href="/crm"
-              className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-700 transition-all"
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-700 transition-all shadow-md"
             >
               <Users className="w-4 h-4 text-blue-400" />
-              <span>فتح جدول الـ CRM</span>
+              <span>جدول الـ CRM المحلي</span>
             </Link>
           </div>
         </div>
@@ -166,8 +226,8 @@ export default function ScraperPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="أدخل الكلمات المفتاحية أو المجال (مثال: صناع محتوى، بودكاست، مونتاج)..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-11 pl-4 py-3 text-sm text-white focus:outline-none focus:border-blue-500 shadow-inner"
+                placeholder="أدخل الكلمات المفتاحية أو المجال (مثال: تسويق، عقارات، مونتاج، بودكاست)..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl pr-11 pl-4 py-3.5 text-sm text-white focus:outline-none focus:border-red-500 shadow-inner"
               />
             </div>
 
@@ -175,21 +235,21 @@ export default function ScraperPage() {
               <select
                 value={maxResults}
                 onChange={(e) => setMaxResults(parseInt(e.target.value, 10))}
-                className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-3 text-xs text-white focus:outline-none focus:border-blue-500"
+                className="bg-slate-950 border border-slate-700 rounded-xl px-4 py-3.5 text-xs text-white focus:outline-none focus:border-red-500 font-semibold"
               >
-                <option value={5}>5 نتائج</option>
                 <option value={10}>10 نتائج</option>
                 <option value={20}>20 نتيجة</option>
                 <option value={30}>30 نتيجة</option>
+                <option value={50}>50 نتيجة</option>
               </select>
 
               <button
                 onClick={() => handleSearch()}
                 disabled={loading}
-                className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-6 py-3 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/25 transition-all flex-shrink-0"
+                className="bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-6 py-3.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all flex-shrink-0"
               >
                 <Search className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                <span>{loading ? 'جارٍ البحث...' : 'فحص القنوات'}</span>
+                <span>{loading ? 'جارٍ البحث المباشر...' : 'فحص القنوات'}</span>
               </button>
             </div>
           </div>
@@ -198,7 +258,7 @@ export default function ScraperPage() {
           <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1">
             <span className="text-xs text-slate-400 flex items-center gap-1 flex-shrink-0">
               <Filter className="w-3.5 h-3.5" />
-              <span>مجالات شائعة:</span>
+              <span>المجالات المقترحة:</span>
             </span>
             {NICHE_PRESETS.map((preset) => (
               <button
@@ -207,9 +267,9 @@ export default function ScraperPage() {
                   setQuery(preset);
                   handleSearch(preset);
                 }}
-                className={`text-xs px-3 py-1 rounded-lg border transition-all flex-shrink-0 ${
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-all flex-shrink-0 font-medium ${
                   query === preset
-                    ? 'bg-blue-600/20 text-blue-300 border-blue-500/40 font-semibold'
+                    ? 'bg-red-600/20 text-red-300 border-red-500/40 font-bold'
                     : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
                 }`}
               >
@@ -220,42 +280,35 @@ export default function ScraperPage() {
         </div>
       </div>
 
-      {/* Save Status Notification */}
+      {/* Save / Sync Status Notification */}
       {saveStatus && (
         <div
-          className={`p-4 rounded-xl flex items-center justify-between gap-3 text-sm animate-fade-in ${
+          className={`p-4 rounded-xl flex items-center justify-between gap-3 text-sm animate-fade-in border ${
             saveStatus.type === 'success'
-              ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-              : 'bg-rose-500/10 text-rose-300 border border-rose-500/20'
+              ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 shadow-lg shadow-emerald-500/10'
+              : 'bg-rose-500/10 text-rose-300 border-rose-500/30 shadow-lg shadow-rose-500/10'
           }`}
         >
           <div className="flex items-center gap-2.5">
             {saveStatus.type === 'success' ? (
-              <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+              <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400" />
             ) : (
-              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400" />
             )}
-            <span>{saveStatus.message}</span>
+            <span className="font-semibold">{saveStatus.message}</span>
           </div>
-          {saveStatus.type === 'success' && (
-            <Link
-              href="/crm"
-              className="text-xs underline font-bold hover:text-white flex items-center gap-1"
-            >
-              <span>الانتقال إلى CRM</span>
-            </Link>
-          )}
         </div>
       )}
 
       {/* Scraped Results Section */}
       {results.length > 0 && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+          {/* Action Toolbar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/90 p-4 rounded-2xl border border-slate-800 shadow-xl">
             <div className="flex items-center gap-3">
               <button
                 onClick={toggleSelectAll}
-                className="text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5"
+                className="text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1.5 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800"
               >
                 <div
                   className={`w-4 h-4 rounded border flex items-center justify-center ${
@@ -270,19 +323,32 @@ export default function ScraperPage() {
                 </div>
                 <span>تحديد الكل ({results.length})</span>
               </button>
-              <span className="text-xs text-slate-400">
-                (تم تحديد {selectedCount} قناة للحفظ)
+              <span className="text-xs font-bold text-slate-300">
+                (المحدد: {selectedCount} عميل)
               </span>
             </div>
 
-            <button
-              onClick={handleSaveToCRM}
-              disabled={saving || selectedCount === 0}
-              className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white px-5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all"
-            >
-              <Download className={`w-4 h-4 ${saving ? 'animate-bounce' : ''}`} />
-              <span>{saving ? 'جارٍ الحفظ...' : `حفظ المحدد في الـ CRM (${selectedCount})`}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Sync to Notion Button */}
+              <button
+                onClick={handleSyncToNotion}
+                disabled={syncingNotion || selectedCount === 0}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 text-white px-5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg shadow-emerald-600/30 transition-all"
+              >
+                <CloudUpload className={`w-4 h-4 ${syncingNotion ? 'animate-bounce' : ''}`} />
+                <span>{syncingNotion ? 'جارٍ الإرسال إلى Notion...' : `إرسال إلى Notion CRM (${selectedCount})`}</span>
+              </button>
+
+              {/* Save to Local CRM Button */}
+              <button
+                onClick={handleSaveToCRM}
+                disabled={saving || selectedCount === 0}
+                className="bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 border border-slate-700 transition-all"
+              >
+                <Download className={`w-3.5 h-3.5 ${saving ? 'animate-spin' : ''}`} />
+                <span>{saving ? 'جارٍ الحفظ...' : 'حفظ بالمحلي'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Results Grid */}
@@ -293,30 +359,29 @@ export default function ScraperPage() {
               return (
                 <div
                   key={channel.channelId}
-                  className={`glass-panel p-5 border transition-all relative ${
+                  className={`glass-panel p-5 border rounded-2xl transition-all relative ${
                     channel.isDuplicate
-                      ? 'border-slate-800 opacity-75'
+                      ? 'border-slate-800 opacity-80'
                       : isSelected
-                      ? 'border-blue-500/60 bg-slate-900/90'
-                      : 'border-slate-800 hover:border-slate-700'
+                      ? 'border-red-500/60 bg-slate-900/90 shadow-lg shadow-red-500/5'
+                      : 'border-slate-800/80 hover:border-slate-700'
                   }`}
                 >
-                  {/* Select Checkbox & Duplicate Indicator */}
+                  {/* Select Checkbox & Status */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
                       <button
-                        onClick={() => !channel.isDuplicate && toggleSelect(channel.channelId)}
-                        disabled={channel.isDuplicate}
+                        onClick={() => toggleSelect(channel.channelId)}
                         className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
                           isSelected
-                            ? 'bg-blue-600 border-blue-500 text-white'
+                            ? 'bg-red-600 border-red-500 text-white'
                             : 'border-slate-600 bg-slate-950'
                         }`}
                       >
                         {isSelected && <span className="text-xs font-bold">✓</span>}
                       </button>
 
-                      <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center font-bold text-slate-300 overflow-hidden border border-slate-700 flex-shrink-0">
+                      <div className="w-11 h-11 rounded-xl bg-slate-800 flex items-center justify-center font-bold text-slate-300 overflow-hidden border border-slate-700 flex-shrink-0 shadow-md">
                         {channel.avatarUrl ? (
                           <img src={channel.avatarUrl} alt="" className="w-full h-full object-cover" />
                         ) : (
@@ -332,27 +397,21 @@ export default function ScraperPage() {
                           href={channel.channelUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-[11px] text-blue-400 hover:underline flex items-center gap-1"
+                          className="text-[11px] text-blue-400 hover:underline flex items-center gap-1 font-mono"
                         >
-                          <span>فتح القناة</span>
+                          <span>رابط القناة</span>
                           <ExternalLink className="w-2.5 h-2.5" />
                         </a>
                       </div>
                     </div>
 
-                    {channel.isDuplicate ? (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
-                        موجود في الـ CRM
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        عميل جديد 🌟
-                      </span>
-                    )}
+                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                      جاهز للإرسال 🚀
+                    </span>
                   </div>
 
                   {/* Channel Metrics */}
-                  <div className="grid grid-cols-3 gap-2 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 text-center my-3">
+                  <div className="grid grid-cols-3 gap-2 bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-center my-3">
                     <div>
                       <span className="text-[10px] text-slate-400 block">المشتركين</span>
                       <span className="text-xs font-bold text-white">
@@ -375,31 +434,18 @@ export default function ScraperPage() {
                   </p>
 
                   {/* Contact Email Field */}
-                  <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-                    <Mail className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <Mail className="w-4 h-4 text-amber-400 flex-shrink-0" />
                     {channel.email ? (
-                      <span className="font-mono text-emerald-300 font-semibold truncate">
+                      <span className="font-mono text-emerald-400 font-bold truncate">
                         {channel.email}
                       </span>
                     ) : (
-                      <span className="text-slate-500 italic">
-                        لم يتم اكتشاف إيميل بالوصف (يمكنك إضافته في الـ CRM)
+                      <span className="text-slate-500 italic text-[11px]">
+                        لم يذكر إيميل بالوصف المتاح (سيتم إرسال رابط القناة لـ Notion)
                       </span>
                     )}
                   </div>
-
-                  {/* Recent Videos */}
-                  {channel.recentVideos && channel.recentVideos.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-slate-800/60 space-y-1">
-                      <span className="text-[10px] font-bold text-slate-400 block">أحدث المقاطع:</span>
-                      {channel.recentVideos.slice(0, 2).map((v, i) => (
-                        <div key={i} className="text-[11px] text-slate-300 truncate flex items-center gap-1.5">
-                          <span className="w-1 h-1 rounded-full bg-red-400" />
-                          <span className="truncate">{v}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               );
             })}
