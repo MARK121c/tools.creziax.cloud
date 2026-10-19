@@ -231,14 +231,23 @@ async function fetchYouTubeWithFailover(urlBuilder: (apiKey: string) => string):
   throw lastError || new Error('جميع مفاتيح Google API المسجلة استنفدت الكوتا اليومية أو غير صالحة');
 }
 
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+  return chunks;
+}
+
 export async function searchYouTubeChannels(
   query: string,
   maxResults: number = 20,
   minSubscribers: number = 1000,
   filterFaceless: boolean = true,
   onlyArabic: boolean = true,
-  strictNameOnly: boolean = false
-): Promise<{ channels: YouTubeScrapeResult[]; stats: ScrapeStats }> {
+  strictNameOnly: boolean = false,
+  initialPageToken?: string | null
+): Promise<{ channels: YouTubeScrapeResult[]; stats: ScrapeStats; nextPageToken: string | null }> {
   const keys = await getYoutubeApiKeys();
   if (keys.length === 0) {
     throw new Error('لا يوجد أي مفتاح YouTube API مسجل في النظام');
@@ -253,139 +262,169 @@ export async function searchYouTubeChannels(
     keysInPool: keys.length,
   };
 
+  const results: YouTubeScrapeResult[] = [];
+  const processedChannelIds = new Set<string>();
+  let nextPageToken: string | null = initialPageToken || null;
+  let pageIndex = 0;
+  // Scan up to 5 pages (up to 250 raw channels) to fulfill the requested target channels count
+  const maxPagesToScan = Math.min(Math.max(Math.ceil(maxResults / 3), 3), 6);
+
   try {
-    // 1. Search for channels with automatic token failover + Arabic language priority
-    const fetchLimit = Math.min(Math.max(maxResults * 3, 40), 50);
-    const langParam = onlyArabic ? '&relevanceLanguage=ar' : '';
-    const { data: searchData } = await fetchYouTubeWithFailover((key) =>
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
-        query
-      )}&maxResults=${fetchLimit}${langParam}&key=${key}`
-    );
+    while (results.length < maxResults && pageIndex < maxPagesToScan) {
+      pageIndex++;
 
-    const channelIds = (searchData.items || []).map((item: any) => item.snippet?.channelId).filter(Boolean);
+      // 1. Search for channels with automatic token failover + Arabic language priority
+      const pageParam = nextPageToken ? `&pageToken=${encodeURIComponent(nextPageToken)}` : '';
+      const langParam = onlyArabic ? '&relevanceLanguage=ar' : '';
+      
+      const { data: searchData } = await fetchYouTubeWithFailover((key) =>
+        `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(
+          query
+        )}&maxResults=50${pageParam}${langParam}&key=${key}`
+      );
 
-    if (channelIds.length === 0) {
-      return { channels: [], stats };
-    }
+      nextPageToken = searchData.nextPageToken || null;
+      const searchItems = searchData.items || [];
+      if (searchItems.length === 0) break;
 
-    // 2. Fetch channel details and statistics with failover
-    const { data: channelsData } = await fetchYouTubeWithFailover((key) =>
-      `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${channelIds.join(
-        ','
-      )}&key=${key}`
-    );
+      // Extract valid channel IDs (strictly starting with UC, non-duplicate, safe string)
+      const rawIds = searchItems
+        .map((it: any) => it.snippet?.channelId)
+        .filter((id: any): id is string => typeof id === 'string' && id.startsWith('UC') && !processedChannelIds.has(id));
 
-    const channelItems = channelsData.items || [];
-    stats.totalChecked = channelItems.length;
-
-    // 3. Process each channel
-    const results: YouTubeScrapeResult[] = [];
-
-    for (const ch of channelItems) {
-      if (results.length >= maxResults) break;
-
-      const id = ch.id;
-      const snippet = ch.snippet || {};
-      const chStats = ch.statistics || {};
-      const description = snippet.description || '';
-      const customUrl = snippet.customUrl || '';
-      const subCount = parseInt(chStats.subscriberCount || '0', 10);
-
-      // Rule 0: Strict Arabic Language Filter
-      if (onlyArabic) {
-        const arabicLetters = (snippet.title + ' ' + description).match(/[\u0600-\u06FF]/g) || [];
-        if (arabicLetters.length < 5) {
-          stats.skippedNonArabic++;
-          continue;
-        }
-      }
-
-      // Rule 1: Skip if less than minimum subscribers (default: 1,000)
-      if (subCount < minSubscribers) {
-        stats.skippedLowSubscribers++;
+      if (rawIds.length === 0) {
+        if (!nextPageToken) break;
         continue;
       }
 
-      // Fetch recent 3 videos for email and faceless detection
-      let recentVideos: string[] = [];
-      let email: string | null = null;
+      for (const id of rawIds) {
+        processedChannelIds.add(id);
+      }
 
-      // Extract email from channel description first
-      const emailsFound = description.match(EMAIL_REGEX) || [];
-      const validEmails = emailsFound.filter(
-        (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
-      );
-      if (validEmails.length > 0) email = validEmails[0];
+      // 2. Fetch channel details in safe chunks of 50 max (avoids 'The request specifies an invalid filter parameter' 400 error)
+      const idChunks = chunkArray(rawIds, 50);
+      const allChannelDetails: any[] = [];
 
-      try {
-        const uploadsPlaylistId = ch.contentDetails?.relatedPlaylists?.uploads;
-        if (uploadsPlaylistId) {
-          const { data: plData } = await fetchYouTubeWithFailover((key) =>
-            `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=3&key=${key}`
-          );
-          for (const item of plData.items || []) {
-            const vTitle = item.snippet?.title;
-            if (vTitle) recentVideos.push(vTitle);
+      for (const chunk of idChunks) {
+        const { data: channelsData } = await fetchYouTubeWithFailover((key) =>
+          `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${chunk.join(
+            ','
+          )}&key=${key}`
+        );
+        if (channelsData.items && Array.isArray(channelsData.items)) {
+          allChannelDetails.push(...channelsData.items);
+        }
+      }
 
-            if (!email) {
-              const vDesc = item.snippet?.description || '';
-              const vEmails = vDesc.match(EMAIL_REGEX) || [];
-              const vValid = vEmails.filter(
-                (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
-              );
-              if (vValid.length > 0) {
-                email = vValid[0];
+      stats.totalChecked += allChannelDetails.length;
+
+      // 3. Process each channel against rules and criteria
+      for (const ch of allChannelDetails) {
+        if (results.length >= maxResults) break;
+
+        const id = ch.id;
+        const snippet = ch.snippet || {};
+        const chStats = ch.statistics || {};
+        const description = snippet.description || '';
+        const customUrl = snippet.customUrl || '';
+        const subCount = parseInt(chStats.subscriberCount || '0', 10);
+
+        // Rule 0: Strict Arabic Language Filter
+        if (onlyArabic) {
+          const arabicLetters = (snippet.title + ' ' + description).match(/[\u0600-\u06FF]/g) || [];
+          if (arabicLetters.length < 5) {
+            stats.skippedNonArabic++;
+            continue;
+          }
+        }
+
+        // Rule 1: Skip if less than minimum subscribers (default: 1,000)
+        if (subCount < minSubscribers) {
+          stats.skippedLowSubscribers++;
+          continue;
+        }
+
+        // Fetch recent 3 videos for email and faceless detection
+        let recentVideos: string[] = [];
+        let email: string | null = null;
+
+        const emailsFound = description.match(EMAIL_REGEX) || [];
+        const validEmails = emailsFound.filter(
+          (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
+        );
+        if (validEmails.length > 0) email = validEmails[0];
+
+        try {
+          const uploadsPlaylistId = ch.contentDetails?.relatedPlaylists?.uploads;
+          if (uploadsPlaylistId) {
+            const { data: plData } = await fetchYouTubeWithFailover((key) =>
+              `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=3&key=${key}`
+            );
+            for (const item of plData.items || []) {
+              const vTitle = item.snippet?.title;
+              if (vTitle) recentVideos.push(vTitle);
+
+              if (!email) {
+                const vDesc = item.snippet?.description || '';
+                const vEmails = vDesc.match(EMAIL_REGEX) || [];
+                const vValid = vEmails.filter(
+                  (e: string) => !e.toLowerCase().endsWith('.png') && !e.toLowerCase().endsWith('.jpg')
+                );
+                if (vValid.length > 0) {
+                  email = vValid[0];
+                }
               }
             }
           }
+        } catch {
+          // Ignore individual playlist failures
         }
-      } catch (vErr) {
-        console.warn(`Could not fetch videos for channel ${id}:`, vErr);
-      }
 
-      // Rule 2: Skip if faceless channel filter is active (Must be a personal creator with face)
-      if (filterFaceless && !isPersonalCreatorChannel(snippet.title || '', description, recentVideos, customUrl, strictNameOnly)) {
-        stats.skippedFaceless++;
-        continue;
-      }
-
-      // Extract social links
-      const socialLinks: string[] = [];
-      for (const [platform, pattern] of Object.entries(SOCIAL_PATTERNS)) {
-        const matches = description.match(pattern);
-        if (matches && matches.length > 0) {
-          socialLinks.push(`${platform}: ${matches[0]}`);
+        // Rule 2: Skip if faceless channel filter is active (Must be a personal creator with face)
+        if (filterFaceless && !isPersonalCreatorChannel(snippet.title || '', description, recentVideos, customUrl, strictNameOnly)) {
+          stats.skippedFaceless++;
+          continue;
         }
+
+        // Extract social links
+        const socialLinks: string[] = [];
+        for (const [platform, pattern] of Object.entries(SOCIAL_PATTERNS)) {
+          const matches = description.match(pattern);
+          if (matches && matches.length > 0) {
+            socialLinks.push(`${platform}: ${matches[0]}`);
+          }
+        }
+
+        // Check if channel already exists in our local database
+        const existingLead = await prisma.lead.findUnique({
+          where: { channelId: id },
+        });
+
+        const channelDirectUrl = customUrl
+          ? `https://www.youtube.com/${customUrl}`
+          : `https://www.youtube.com/channel/${id}`;
+
+        results.push({
+          channelId: id,
+          channelName: snippet.title || 'قناة غير معنونة',
+          channelUrl: channelDirectUrl,
+          avatarUrl: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || '',
+          subscriberCount: subCount,
+          videoCount: parseInt(chStats.videoCount || '0', 10),
+          viewCount: chStats.viewCount ? Number(chStats.viewCount).toLocaleString() : '0',
+          description: description,
+          email: email,
+          socialLinks: socialLinks,
+          recentVideos: recentVideos,
+          isDuplicate: !!existingLead,
+        });
       }
 
-      // Check if channel already exists in our local database
-      const existingLead = await prisma.lead.findUnique({
-        where: { channelId: id },
-      });
-
-      const channelDirectUrl = customUrl
-        ? `https://www.youtube.com/${customUrl}`
-        : `https://www.youtube.com/channel/${id}`;
-
-      results.push({
-        channelId: id,
-        channelName: snippet.title || 'قناة غير معنونة',
-        channelUrl: channelDirectUrl,
-        avatarUrl: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || '',
-        subscriberCount: subCount,
-        videoCount: parseInt(chStats.videoCount || '0', 10),
-        viewCount: chStats.viewCount ? Number(chStats.viewCount).toLocaleString() : '0',
-        description: description,
-        email: email,
-        socialLinks: socialLinks,
-        recentVideos: recentVideos,
-        isDuplicate: !!existingLead,
-      });
+      if (!nextPageToken) break;
     }
 
     stats.qualified = results.length;
-    return { channels: results, stats };
+    return { channels: results, stats, nextPageToken };
   } catch (err: any) {
     console.error('searchYouTubeChannels error:', err);
     throw err;

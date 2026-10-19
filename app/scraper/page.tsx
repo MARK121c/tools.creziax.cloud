@@ -52,6 +52,8 @@ export default function ScraperPage() {
   const [onlyArabic, setOnlyArabic] = useState(true);
   const [strictNameOnly, setStrictNameOnly] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
   const [results, setResults] = useState<YouTubeScrapeResult[]>([]);
   const [selectedChannels, setSelectedChannels] = useState<Record<string, boolean>>({});
   const [syncingNotion, setSyncingNotion] = useState(false);
@@ -166,6 +168,7 @@ export default function ScraperPage() {
     setLoading(true);
     setSaveStatus(null);
     setSelectedChannels({});
+    setNextPageToken(null);
     try {
       const res = await fetch(
         `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}&strictNameOnly=${strictNameOnly}`
@@ -173,6 +176,7 @@ export default function ScraperPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'فشل البحث في يوتيوب');
       setResults(data.channels || []);
+      setNextPageToken(data.nextPageToken || null);
       if (data.stats) {
         setScrapeStats(data.stats);
       }
@@ -189,6 +193,45 @@ export default function ScraperPage() {
       setSaveStatus({ type: 'error', message: err.message || 'حدث خطأ أثناء فحص يوتيوب' });
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load more channels using nextPageToken (Fetches fresh subsequent pages)
+  const handleLoadMore = async () => {
+    if (!nextPageToken || loadingMore) return;
+
+    setLoadingMore(true);
+    try {
+      const res = await fetch(
+        `/api/scraper/youtube?query=${encodeURIComponent(query)}&maxResults=${maxResults}&minSubscribers=${minSubscribers}&filterFaceless=${filterFaceless}&onlyArabic=${onlyArabic}&strictNameOnly=${strictNameOnly}&pageToken=${encodeURIComponent(
+          nextPageToken
+        )}`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'فشل جلب قنوات إضافية');
+
+      const newChannels = data.channels || [];
+      setResults((prev) => {
+        const existingIds = new Set(prev.map((c) => c.channelId));
+        const nonDuplicates = newChannels.filter((c: YouTubeScrapeResult) => !existingIds.has(c.channelId));
+        return [...prev, ...nonDuplicates];
+      });
+      setNextPageToken(data.nextPageToken || null);
+
+      // Select new channels
+      setSelectedChannels((prev) => {
+        const updated = { ...prev };
+        newChannels.forEach((ch: YouTubeScrapeResult) => {
+          if (!ch.isDuplicate) {
+            updated[ch.channelId] = true;
+          }
+        });
+        return updated;
+      });
+    } catch (err: any) {
+      setSaveStatus({ type: 'error', message: err.message || 'حدث خطأ أثناء جلب الدفعة التالية' });
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -843,6 +886,25 @@ export default function ScraperPage() {
               );
             })}
           </div>
+
+          {/* Load More Channels Button */}
+          {nextPageToken && (
+            <div className="flex justify-center pt-6 pb-2">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-white font-bold py-3.5 px-8 rounded-2xl text-xs flex items-center gap-2.5 shadow-xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-4 h-4 text-emerald-400 ${loadingMore ? 'animate-spin' : ''}`} />
+                <span>
+                  {loadingMore
+                    ? 'جارٍ جلب قنوات إضافية جديدة...'
+                    : `تحميل قنوات إضافية جديدة (+${maxResults}) 🚀`}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -11,18 +11,19 @@ export async function GET(req: NextRequest) {
     const maxResults = parseInt(searchParams.get('maxResults') || '20', 10);
     const minSubscribers = parseInt(searchParams.get('minSubscribers') || '1000', 10);
     const filterFaceless = searchParams.get('filterFaceless') !== 'false';
-    const onlyArabic = searchParams.get('onlyArabic') !== 'false';
     const strictNameOnly = searchParams.get('strictNameOnly') === 'true';
+    const pageToken = searchParams.get('pageToken') || null;
 
-    const { channels, stats } = await searchYouTubeChannels(
+    const { channels, stats, nextPageToken } = await searchYouTubeChannels(
       query,
       maxResults,
       minSubscribers,
       filterFaceless,
       onlyArabic,
-      strictNameOnly
+      strictNameOnly,
+      pageToken
     );
-    return NextResponse.json({ channels, stats, query });
+    return NextResponse.json({ channels, stats, query, nextPageToken });
   } catch (error: any) {
     console.error('Scraper API Error:', error);
     return NextResponse.json({ error: error.message || 'Scraping failed' }, { status: 500 });
