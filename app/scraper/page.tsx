@@ -55,31 +55,54 @@ export default function ScraperPage() {
   const [newKeywordInput, setNewKeywordInput] = useState<string>('');
   const [showKeywordsHub, setShowKeywordsHub] = useState<boolean>(true);
 
-  // Load saved keywords from localStorage on mount (merging newly added defaults)
+  // Load saved keywords from localStorage on mount (strictly excluding any deleted keywords)
   useEffect(() => {
-    const defaults = getAllDefaultKeywords();
     try {
+      const defaults = getAllDefaultKeywords();
+      const deletedList: string[] = JSON.parse(localStorage.getItem('crm_deleted_keywords_pool') || '[]');
+      const deletedSet = new Set(deletedList);
+
       const stored = localStorage.getItem('crm_saved_keywords_pool');
+      let finalKeywords: string[] = [];
+
       if (stored) {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const merged = Array.from(new Set([...parsed, ...defaults]));
-          setSavedKeywords(merged);
-          return;
+        if (Array.isArray(parsed)) {
+          // Strictly filter out any keyword that was ever deleted
+          finalKeywords = parsed.filter((k: string) => !deletedSet.has(k));
+
+          // Also allow any new defaults to join ONLY if they were never deleted
+          const existingSet = new Set(finalKeywords);
+          for (const def of defaults) {
+            if (!existingSet.has(def) && !deletedSet.has(def)) {
+              finalKeywords.push(def);
+            }
+          }
         }
+      } else {
+        finalKeywords = defaults.filter((k) => !deletedSet.has(k));
       }
+
+      setSavedKeywords(finalKeywords);
+      localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(finalKeywords));
     } catch {
-      // fallback
+      setSavedKeywords(getAllDefaultKeywords());
     }
-    setSavedKeywords(defaults);
   }, []);
 
-  // Delete keyword after scraping it
+  // Delete keyword permanently after scraping it
   const handleDeleteKeyword = (keywordToDelete: string) => {
     const updated = savedKeywords.filter((k) => k !== keywordToDelete);
     setSavedKeywords(updated);
     try {
       localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(updated));
+
+      // Persist to permanent deleted pool so it NEVER returns on refresh
+      const deletedList: string[] = JSON.parse(localStorage.getItem('crm_deleted_keywords_pool') || '[]');
+      if (!deletedList.includes(keywordToDelete)) {
+        deletedList.push(keywordToDelete);
+        localStorage.setItem('crm_deleted_keywords_pool', JSON.stringify(deletedList));
+      }
     } catch {
       // ignore
     }
@@ -94,6 +117,11 @@ export default function ScraperPage() {
     setNewKeywordInput('');
     try {
       localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(updated));
+
+      // If user re-added it, remove from deleted blacklist
+      const deletedList: string[] = JSON.parse(localStorage.getItem('crm_deleted_keywords_pool') || '[]');
+      const updatedDeleted = deletedList.filter((k) => k !== trimmed);
+      localStorage.setItem('crm_deleted_keywords_pool', JSON.stringify(updatedDeleted));
     } catch {
       // ignore
     }
@@ -105,6 +133,8 @@ export default function ScraperPage() {
     setSavedKeywords(defaults);
     try {
       localStorage.setItem('crm_saved_keywords_pool', JSON.stringify(defaults));
+      // Clear the deleted blacklist only when the user explicitly clicks reset
+      localStorage.removeItem('crm_deleted_keywords_pool');
     } catch {
       // ignore
     }
@@ -905,20 +935,23 @@ export default function ScraperPage() {
                 >
                   الكل ({savedKeywords.length})
                 </button>
-                {DEFAULT_KEYWORD_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.category}
-                    type="button"
-                    onClick={() => setSelectedCategory(cat.category)}
-                    className={`text-[11px] px-3 py-1 rounded-lg font-bold flex-shrink-0 transition-colors ${
-                      selectedCategory === cat.category
-                        ? 'bg-amber-500 text-black shadow'
-                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                    }`}
-                  >
-                    {cat.category}
-                  </button>
-                ))}
+                {DEFAULT_KEYWORD_CATEGORIES.map((cat) => {
+                  const remainingCount = cat.keywords.filter((k) => savedKeywords.includes(k)).length;
+                  return (
+                    <button
+                      key={cat.category}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat.category)}
+                      className={`text-[11px] px-3 py-1 rounded-lg font-bold flex-shrink-0 transition-colors ${
+                        selectedCategory === cat.category
+                          ? 'bg-amber-500 text-black shadow'
+                          : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      {cat.category} ({remainingCount})
+                    </button>
+                  );
+                })}
               </div>
 
               {/* Keywords Pills List */}
