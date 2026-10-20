@@ -51,7 +51,25 @@ export default function WebMeetingRecorderPage() {
   const [audioSource, setAudioSource] = useState<'all' | 'system' | 'mic'>('all');
   const [videoQuality, setVideoQuality] = useState<'1080p' | '720p' | '4k'>('1080p');
 
-  // Result states
+  // 🔥 Direct-to-disk mode (File System Access API) — no server, no RAM limit
+  const [directSaveMode, setDirectSaveMode] = useState(true);
+  const [directSaveStatus, setDirectSaveStatus] = useState<
+    'idle' | 'saving' | 'done' | 'error'
+  >('idle');
+  const [directSaveFileName, setDirectSaveFileName] = useState<string>('');
+  const fileWritableRef = useRef<FileSystemWritableFileStream | null>(null);
+  const directSavedBytesRef = useRef<number>(0);
+
+  // 🔥 Direct-to-disk mode (File System Access API) — no server, no RAM limit
+  const [directSaveMode, setDirectSaveMode] = useState(true);
+  const [directSaveStatus, setDirectSaveStatus] = useState<
+    'idle' | 'saving' | 'done' | 'error'
+  >('idle');
+  const [directSaveFileName, setDirectSaveFileName] = useState<string>('');
+  const fileWritableRef = useRef<FileSystemWritableFileStream | null>(null);
+  const directSavedBytesRef = useRef<number>(0);
+
+  // Result states (used in server-upload mode only)
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
   const [currentServerId, setCurrentServerId] = useState<string | null>(null);
@@ -192,9 +210,13 @@ export default function WebMeetingRecorderPage() {
   const startRecording = async () => {
     try {
       chunksRef.current = [];
+      fileWritableRef.current = null;
+      directSavedBytesRef.current = 0;
       setRecordedBlob(null);
       setRecordedUrl(null);
       setUploadSuccess(false);
+      setDirectSaveStatus('idle');
+      setDirectSaveFileName('');
 
       // Resolve quality settings
       const qualityConfig = {
@@ -289,37 +311,96 @@ export default function WebMeetingRecorderPage() {
         'video/webm',
       ];
       const selectedMime = mimeTypes.find((type) => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+      const ext = selectedMime.includes('mp4') ? 'mp4' : 'webm';
+
+      // 5. Open file system stream BEFORE starting, if direct-save mode is on
+      const autoTitle = `اجتماع_${new Date().toLocaleDateString('ar-EG', {
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).replace(/[/\\?%*:|"<>]/g, '_')}`;
+
+      if (directSaveMode && typeof (window as any).showSaveFilePicker === 'function') {
+        try {
+          const fileHandle = await (window as any).showSaveFilePicker({
+            suggestedName: `${autoTitle}.${ext}`,
+            types: [
+              {
+                description: 'Video File',
+                accept: ext === 'mp4' ? { 'video/mp4': ['.mp4'] } : { 'video/webm': ['.webm'] },
+              },
+            ],
+          });
+          const writable = await fileHandle.createWritable();
+          fileWritableRef.current = writable;
+          setDirectSaveFileName(`${autoTitle}.${ext}`);
+          setDirectSaveStatus('saving');
+        } catch (fsErr: any) {
+          if (fsErr.name === 'AbortError') {
+            // User cancelled the file picker — stop everything
+            displayStream.getTracks().forEach((t) => t.stop());
+            combinedStream.getTracks().forEach((t) => t.stop());
+            return;
+          }
+          // File System API unsupported or blocked — fall back to in-memory mode
+          console.warn('File System Access API failed, falling back to in-memory:', fsErr);
+          fileWritableRef.current = null;
+          setDirectSaveStatus('idle');
+        }
+      }
 
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: selectedMime,
         videoBitsPerSecond: qualityConfig.bps,
       });
 
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) {
+      mediaRecorder.ondataavailable = async (e) => {
+        if (!e.data || e.data.size === 0) return;
+
+        if (fileWritableRef.current) {
+          // ✅ Direct-to-disk: write chunk straight to the file, zero RAM usage
+          try {
+            await fileWritableRef.current.write(e.data);
+            directSavedBytesRef.current += e.data.size;
+          } catch (writeErr) {
+            console.error('Disk write error:', writeErr);
+          }
+        } else {
+          // In-memory fallback (server-upload mode)
           chunksRef.current.push(e.data);
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const completeBlob = new Blob(chunksRef.current, { type: selectedMime });
-        const url = URL.createObjectURL(completeBlob);
-        setRecordedBlob(completeBlob);
-        setRecordedUrl(url);
-        const autoTitle = `اجتماع_${new Date().toLocaleDateString('ar-EG', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).replace(/[/\\?%*:|"<>]/g, '_')}`;
-        setRecordingTitle(autoTitle);
-
+      mediaRecorder.onstop = async () => {
         combinedStream.getTracks().forEach((track) => track.stop());
         displayStream.getTracks().forEach((track) => track.stop());
         if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
           audioContextRef.current.close().catch(() => {});
         }
 
-        // Auto save to server so it never disappears on refresh!
-        autoSaveRecording(completeBlob, autoTitle);
+        if (fileWritableRef.current) {
+          // ✅ Close the file stream — file is now complete on disk!
+          try {
+            await fileWritableRef.current.close();
+            setDirectSaveStatus('done');
+          } catch (closeErr) {
+            console.error('Error closing file stream:', closeErr);
+            setDirectSaveStatus('error');
+          }
+          fileWritableRef.current = null;
+        } else {
+          // In-memory mode — create blob and auto-upload to server
+          const completeBlob = new Blob(chunksRef.current, { type: selectedMime });
+          const url = URL.createObjectURL(completeBlob);
+          setRecordedBlob(completeBlob);
+          setRecordedUrl(url);
+          setRecordingTitle(autoTitle);
+          autoSaveRecording(completeBlob, autoTitle);
+        }
       };
 
-      mediaRecorder.start(1000);
+      mediaRecorder.start(2000); // write to disk every 2 seconds
       mediaRecorderRef.current = mediaRecorder;
 
       setIsRecording(true);
@@ -834,6 +915,62 @@ export default function WebMeetingRecorderPage() {
             </div>
 
             {/* Big Launch Button */}
+
+            {/* 🔥 Direct-to-Disk Mode Toggle */}
+            <div className={`p-3 rounded-xl border transition-all ${
+              directSaveMode
+                ? 'bg-violet-500/10 border-violet-500/40'
+                : 'bg-slate-950 border-slate-800'
+            }`}>
+              <label className="flex items-center justify-between gap-3 cursor-pointer select-none">
+                <div className="flex items-center gap-2.5">
+                  <HardDrive className={`w-4 h-4 ${directSaveMode ? 'text-violet-400' : 'text-slate-500'}`} />
+                  <div>
+                    <div className={`text-xs font-bold ${directSaveMode ? 'text-violet-300' : 'text-slate-400'}`}>
+                      حفظ مباشر على الجهاز (بدون سيرفر) 🔥
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      {directSaveMode
+                        ? 'ملف يتحفظ على هارد الجهاز مباشرةً — يدعم أي مدة حتى 10 ساعات'
+                        : 'وضع الخادم: يُحفظ على السيرفر ويتحوّل لـ MP4 أوتوماتيك'}
+                    </div>
+                  </div>
+                </div>
+                <div
+                  role="switch"
+                  aria-checked={directSaveMode}
+                  onClick={() => !isRecording && setDirectSaveMode((v) => !v)}
+                  className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+                    directSaveMode ? 'bg-violet-600' : 'bg-slate-700'
+                  } ${isRecording ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <span
+                    className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                      directSaveMode ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </label>
+
+              {/* Direct Save Status badge during recording */}
+              {isRecording && directSaveMode && directSaveStatus === 'saving' && (
+                <div className="mt-2 flex items-center gap-2 text-[11px] text-violet-300 font-semibold">
+                  <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+                  <span>
+                    يكتب مباشرةً على الهارد ديسك...
+                    {directSavedBytesRef.current > 0 &&
+                      ` (${(directSavedBytesRef.current / 1024 / 1024).toFixed(0)} MB)`}
+                  </span>
+                </div>
+              )}
+              {directSaveStatus === 'done' && (
+                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-400 font-bold">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>تم الحفظ بنجاح: {directSaveFileName}</span>
+                </div>
+              )}
+            </div>
+
             {!isRecording ? (
               <button
                 onClick={startRecording}
