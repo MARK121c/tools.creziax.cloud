@@ -2,46 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { convertToMp4, convertToMp3 } from '@/lib/recorder-converter';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-/**
- * Executes an ffmpeg conversion command safely with timeout
- */
-function runFfmpeg(args: string[]): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      const proc = spawn('ffmpeg', args, { windowsHide: true });
-      let hasError = false;
-
-      proc.on('error', (err) => {
-        console.warn('ffmpeg process error:', err.message);
-        hasError = true;
-        resolve(false);
-      });
-
-      const timeout = setTimeout(() => {
-        try {
-          proc.kill('SIGKILL');
-        } catch {}
-        resolve(false);
-      }, 60000); // 1 minute max conversion timeout
-
-      proc.on('close', (code) => {
-        clearTimeout(timeout);
-        if (!hasError && code === 0) {
-          resolve(true);
-        } else {
-          resolve(false);
-        }
-      });
-    } catch {
-      resolve(false);
-    }
-  });
-}
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -55,10 +19,11 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
     const requestedFormat = (req.nextUrl.searchParams.get('format') || 'mp4').toLowerCase();
     const originalPath = recording.filePath;
-    const baseName = (recording.title || 'recording')
-      .replace(/[/\\?%*:|"<>]/g, '')
-      .trim()
-      .slice(0, 80) || 'meeting_recording';
+    const baseName =
+      (recording.title || 'recording')
+        .replace(/[/\\?%*:|"<>]/g, '')
+        .trim()
+        .slice(0, 80) || 'meeting_recording';
 
     // Helper to serve file with full Range / seeking support (essential for video timeline scrubbing)
     const serveFileWithRange = (filePath: string, contentType: string, downloadFileName?: string) => {
@@ -140,22 +105,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       }
 
       // Convert to pure standard MP3 via ffmpeg
-      const ok = await runFfmpeg([
-        '-y',
-        '-i', originalPath,
-        '-vn',
-        '-acodec', 'libmp3lame',
-        '-ar', '44100',
-        '-ac', '2',
-        '-ab', '192k',
-        cachedMp3Path,
-      ]);
-
+      const ok = await convertToMp3(originalPath, cachedMp3Path);
       if (ok && fs.existsSync(cachedMp3Path) && fs.statSync(cachedMp3Path).size > 1000) {
         return serveFileWithRange(cachedMp3Path, 'audio/mpeg', mp3FileName);
       }
 
-      // If ffmpeg failed or file has only video, produce valid mp3 audio or stream original
+      // Fallback
       return serveFileWithRange(originalPath, 'audio/webm', `${baseName}.webm`);
     }
 
@@ -163,38 +118,28 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const mp4FileName = `${baseName}.mp4`;
     const cachedMp4Path = originalPath.replace(/\.[^.]+$/, '') + '.mp4';
 
+    // If original file is already a genuine MP4, serve it directly
     if (originalPath.endsWith('.mp4')) {
       return serveFileWithRange(originalPath, 'video/mp4', mp4FileName);
     }
 
-    if (fs.existsSync(cachedMp4Path) && fs.statSync(cachedMp4Path).size > 1000) {
-      return serveFileWithRange(cachedMp4Path, 'video/mp4', mp4FileName);
+    const origStat = fs.statSync(originalPath);
+
+    // If cached MP4 exists, check it's not a truncated remnant from an interrupted run
+    if (fs.existsSync(cachedMp4Path)) {
+      const cachedStat = fs.statSync(cachedMp4Path);
+      // If original is > 5MB but cached MP4 is suspiciously tiny (< 50KB), purge corrupted cache
+      if (origStat.size > 5 * 1024 * 1024 && cachedStat.size < 50 * 1024) {
+        try {
+          fs.unlinkSync(cachedMp4Path);
+        } catch {}
+      } else if (cachedStat.size > 1000) {
+        return serveFileWithRange(cachedMp4Path, 'video/mp4', mp4FileName);
+      }
     }
 
-    // Convert WebM to MP4 using ffmpeg with standard H.264 + AAC + faststart
-    let converted = await runFfmpeg([
-      '-y',
-      '-i', originalPath,
-      '-c:v', 'libx264',
-      '-pix_fmt', 'yuv420p',
-      '-preset', 'ultrafast',
-      '-crf', '24',
-      '-c:a', 'aac',
-      '-b:a', '128k',
-      '-movflags', '+faststart',
-      cachedMp4Path,
-    ]);
-
-    if (!converted) {
-      // Fallback fast copy remux
-      converted = await runFfmpeg([
-        '-y',
-        '-i', originalPath,
-        '-c', 'copy',
-        '-movflags', '+faststart',
-        cachedMp4Path,
-      ]);
-    }
+    // Convert WebM to universal MP4 (H.264 + AAC + CFR 30fps + faststart)
+    const converted = await convertToMp4(originalPath, cachedMp4Path, 900000); // 15 min timeout
 
     if (converted && fs.existsSync(cachedMp4Path) && fs.statSync(cachedMp4Path).size > 1000) {
       return serveFileWithRange(cachedMp4Path, 'video/mp4', mp4FileName);

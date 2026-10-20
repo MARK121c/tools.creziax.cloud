@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getSetting } from '@/lib/settings';
 import fs from 'fs';
 import path from 'path';
+import { convertToMp4 } from '@/lib/recorder-converter';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,14 @@ export async function POST(req: NextRequest) {
     const filePath = path.join(storageDir, fileName);
 
     fs.writeFileSync(filePath, buffer);
+
+    // Pre-convert WebM to universal MP4 in the background so downloads are instant
+    if (extension === 'webm') {
+      const cachedMp4Path = filePath.replace(/\.[^.]+$/, '') + '.mp4';
+      convertToMp4(filePath, cachedMp4Path).catch((convErr) => {
+        console.warn('Background MP4 pre-conversion failed:', convErr);
+      });
+    }
 
     const driveBackupUrl = await getSetting('drive_backup_url', '');
     const autoUpload = (await getSetting('drive_auto_upload', 'true')) === 'true';

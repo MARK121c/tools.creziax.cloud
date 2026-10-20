@@ -58,6 +58,7 @@ export default function WebMeetingRecorderPage() {
   const [recordingTitle, setRecordingTitle] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isPreparingDownload, setIsPreparingDownload] = useState<'mp4' | 'mp3' | null>(null);
 
   // Google Drive Settings states
   const [driveLink, setDriveLink] = useState('');
@@ -277,12 +278,15 @@ export default function WebMeetingRecorderPage() {
         stopRecording();
       };
 
-      // 4. MediaRecorder
+      // 4. MediaRecorder with preferred universal MP4 / H.264 codecs first
       const mimeTypes = [
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=h264,opus',
+        'video/webm;codecs=h264',
         'video/webm;codecs=vp9,opus',
         'video/webm;codecs=vp8,opus',
         'video/webm',
-        'video/mp4',
       ];
       const selectedMime = mimeTypes.find((type) => MediaRecorder.isTypeSupported(type)) || 'video/webm';
 
@@ -370,6 +374,12 @@ export default function WebMeetingRecorderPage() {
         setCurrentServerId(data.recording.id);
         fetchRecordings();
 
+        // If user already clicked download while upload was pending, trigger it now!
+        if (isPreparingDownload && data.recording.id) {
+          window.location.href = `/api/recordings/${data.recording.id}/download?format=${isPreparingDownload}`;
+          setIsPreparingDownload(null);
+        }
+
         // If Drive auto-upload is on and link is present, sync and open drive
         if (autoUploadToDrive && driveLink.trim() && data.recording?.id) {
           handleSyncToDrive(data.recording.id);
@@ -390,14 +400,20 @@ export default function WebMeetingRecorderPage() {
       return;
     }
 
+    // If still uploading, queue the download to trigger immediately upon upload completion
+    if (isUploading) {
+      setIsPreparingDownload(format);
+      return;
+    }
+
     if (!recordedUrl || !recordedBlob) return;
     const a = document.createElement('a');
     a.href = recordedUrl;
     const cleanTitle = (recordingTitle || 'Meeting_Recording').replace(/[/\\?%*:|"<>]/g, '').trim();
     // Use proper extension matching recorded blob
     const isActuallyMp4 = recordedBlob.type.includes('mp4');
-    const finalExt = format === 'mp3' ? 'webm' : (isActuallyMp4 ? 'mp4' : 'webm');
-    a.download = `${cleanTitle}.${format === 'mp3' ? 'mp3' : finalExt}`;
+    const finalExt = format === 'mp3' ? 'mp3' : (isActuallyMp4 ? 'mp4' : 'webm');
+    a.download = `${cleanTitle}.${finalExt}`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -619,19 +635,21 @@ export default function WebMeetingRecorderPage() {
                   {/* Download MP4 */}
                   <button
                     onClick={() => handleClientDownload('mp4')}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold border border-slate-700 transition-all"
+                    disabled={isPreparingDownload === 'mp4'}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold border border-slate-700 transition-all disabled:opacity-60"
                   >
-                    <Film className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>تنزيل فيديو MP4</span>
+                    <Film className={`w-3.5 h-3.5 text-cyan-400 ${isPreparingDownload === 'mp4' ? 'animate-spin' : ''}`} />
+                    <span>{isPreparingDownload === 'mp4' ? 'جاري تجهيز MP4...' : 'تنزيل فيديو MP4'}</span>
                   </button>
 
                   {/* Download MP3 */}
                   <button
                     onClick={() => handleClientDownload('mp3')}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold border border-slate-700 transition-all"
+                    disabled={isPreparingDownload === 'mp3'}
+                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs font-bold border border-slate-700 transition-all disabled:opacity-60"
                   >
-                    <Music className="w-3.5 h-3.5 text-amber-400" />
-                    <span>تنزيل صوت MP3</span>
+                    <Music className={`w-3.5 h-3.5 text-amber-400 ${isPreparingDownload === 'mp3' ? 'animate-spin' : ''}`} />
+                    <span>{isPreparingDownload === 'mp3' ? 'جاري تجهيز MP3...' : 'تنزيل صوت MP3'}</span>
                   </button>
 
                   {/* Direct Open / Upload to Google Drive */}
